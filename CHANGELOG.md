@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/Chief-spartan-117/Rustcode/compare/v0.3.0...v0.3.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* harden downloads, updates, temp files and external links ([3a341ce](https://github.com/Chief-spartan-117/Rustcode/commit/3a341cec6cd4f5972c4a5604e2ea7206a877cbb3))
+* harden downloads, updates, temp files and external links ([5f64b01](https://github.com/Chief-spartan-117/Rustcode/commit/5f64b01921a46bd5edf551c6c7e62d8a6d078d2d))
+
 ## [0.3.0](https://github.com/Chief-spartan-117/Rustcode/compare/v0.2.1...v0.3.0) (2026-10-19)
 
 
