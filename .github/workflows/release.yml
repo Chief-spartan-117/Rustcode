@@ -1,0 +1,52 @@
+name: Release
+
+# On every push to main, release-please reads the commits since the last release:
+#   fix:                       patch release  (0.1.0 -> 0.1.1)
+#   feat:                      minor release  (0.1.0 -> 0.2.0)
+#   feat!: / BREAKING CHANGE:  major release  (while below 1.0.0 this is a minor one)
+# It keeps a "release PR" open that holds the new version in Cargo.toml and the new CHANGELOG.md
+# entry. Merging that PR creates the tag and the GitHub release, and the jobs below build the
+# macOS app and attach it to the release. The program's updater finds that release by itself.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    strategy:
+      matrix:
+        os: [macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the app and the release files
+        env:
+          # Where the built program looks for newer releases (see `rustcode.update.repository`).
+          RUSTCODE_UPDATE_REPO: ${{ github.repository }}
+        run: scripts/bundle-macos.sh release --dist
+      - name: Attach the files to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" target/dist/* --clobber

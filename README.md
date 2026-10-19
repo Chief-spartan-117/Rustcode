@@ -39,6 +39,10 @@ On macOS, `scripts/bundle-macos.sh` builds `RustCode.app` (see the comments at t
 
 Notebooks run Python with the built-in driver. Other kernels need `jupyter_client` and the kernel installed (for example `pip install jupyter_client ipykernel`).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Commits follow [Conventional Commits](https://www.conventionalcommits.org); releases, version numbers and `CHANGELOG.md` are made from them automatically.
+
 ## Status
 
 Work in progress. See [docs/ROADMAP.md](docs/ROADMAP.md).
