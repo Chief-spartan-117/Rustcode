@@ -129,6 +129,8 @@ pub(crate) struct Shell {
     pub panel_tab: PanelTab,
     pub panel_height: f32,
     pub panel_resizing: bool,
+    /// The panel fills the whole space above the status bar, hiding the editor.
+    pub panel_maximized: bool,
     pub sidebar_width: f32,
     /// The height of the side bar when it is along the top or the bottom.
     pub sidebar_height: f32,
@@ -171,6 +173,7 @@ impl Shell {
             panel_tab: PanelTab::Output,
             panel_height: DEFAULT_PANEL_HEIGHT,
             panel_resizing: false,
+            panel_maximized: false,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_height: DEFAULT_SIDEBAR_HEIGHT,
             side_bar_position: SideBarPosition::default(),
@@ -321,6 +324,14 @@ impl EditorView {
 
     pub(crate) fn toggle_panel(&mut self, cx: &mut Context<Self>) {
         self.shell.panel_visible = !self.shell.panel_visible;
+        if !self.shell.panel_visible {
+            self.shell.panel_maximized = false;
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_panel_maximized(&mut self, cx: &mut Context<Self>) {
+        self.shell.panel_maximized = !self.shell.panel_maximized;
         cx.notify();
     }
 
@@ -578,6 +589,7 @@ impl EditorView {
                     cx.notify();
                 }),
             );
+        let maximized = self.shell.panel_maximized;
         let content = match self.shell.panel_tab {
             PanelTab::Output => {
                 let selected = self.shell.output_selection.map(|(a, b)| (a.min(b), a.max(b)));
@@ -662,14 +674,14 @@ impl EditorView {
         div()
             .id("panel")
             .relative()
-            .h(px(self.shell.panel_height))
-            .flex_none()
+            .when(maximized, |panel| panel.flex_1().min_h_0())
+            .when(!maximized, |panel| panel.h(px(self.shell.panel_height)).flex_none())
             .flex()
             .flex_col()
             .bg(theme.panel.background)
             .border_t_1()
             .border_color(theme.panel.border)
-            .child(resize_handle)
+            .when(!maximized, |panel| panel.child(resize_handle))
             .child(
                 div()
                     .h(px(28.))
@@ -725,6 +737,24 @@ impl EditorView {
                                     )
                                     .child(crate::icons::icon("trash", 12., dim))
                             }))
+                            .child(
+                                div()
+                                    .id("panel-maximize")
+                                    .px(px(6.))
+                                    .rounded(px(3.))
+                                    .text_color(dim)
+                                    .hover(move |style| style.bg(hover))
+                                    .cursor_pointer()
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, _: &MouseDownEvent, _w, cx| this.toggle_panel_maximized(cx)),
+                                    )
+                                    .child(crate::icons::icon(
+                                        if maximized { "arrows-in-line-vertical" } else { "arrows-out-line-vertical" },
+                                        12.,
+                                        dim,
+                                    )),
+                            )
                             .child(
                         div()
                             .id("panel-close")

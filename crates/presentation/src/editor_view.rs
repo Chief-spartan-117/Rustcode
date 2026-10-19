@@ -1972,7 +1972,7 @@ impl Render for EditorView {
             .h_full()
             .flex()
             .flex_col()
-            .child(
+            .children((!(self.shell.panel_visible && self.shell.panel_maximized)).then(|| {
                 div()
                     .relative()
                     .flex_1()
@@ -1981,8 +1981,8 @@ impl Render for EditorView {
                     .flex_row()
                     .child(self.render_groups(window, cx))
                     .children(self.render_debug_bar(cx))
-                    .children((self.palette.open && self.palette.mode != crate::palette::PaletteMode::Projects).then(|| self.render_palette(window, cx))),
-            )
+                    .children((self.palette.open && self.palette.mode != crate::palette::PaletteMode::Projects).then(|| self.render_palette(window, cx)))
+            }))
             .children(self.shell.panel_visible.then(|| self.render_panel(window, cx)));
 
         // Typed text has somewhere to go even when no editor is drawn (the welcome screen, a
