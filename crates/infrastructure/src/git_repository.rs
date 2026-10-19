@@ -113,6 +113,16 @@ fn run_gh(folder: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// A branch, tag, remote or address typed by the user or read from a repository, for use as an
+/// argument of `git`: one that starts with `-` would be taken for an option (`--upload-pack=...`),
+/// and `ext::` and `fd::` addresses make `git` run a program.
+fn positional(value: &str) -> Result<String, String> {
+    if value.starts_with('-') || value.contains("ext::") || value.starts_with("fd::") {
+        return Err(format!("`{value}` is not a valid name or address"));
+    }
+    Ok(value.to_owned())
+}
+
 /// `text` as one word for `sh`.
 fn shell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
@@ -133,7 +143,15 @@ fn git_output_env(
     env: &[(&str, &str)],
 ) -> Result<(bool, String), String> {
     let mut command = std::process::Command::new("git");
-    command.arg("-C").arg(folder).args(args).env("GIT_TERMINAL_PROMPT", "0").env("GIT_EDITOR", "true");
+    // A repository's own config can name programs to run (`core.fsmonitor` runs on every status),
+    // so the ones that need no user action are off, and so are the hooks of a folder not trusted.
+    command.arg("-C").arg(folder).args(["-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"]);
+    if !crate::programs::folder_is_trusted(folder) {
+        // Hooks off, and the signature checks (`%G?`, `--show-signature`) use the usual programs
+        // rather than ones the repository's config names.
+        command.args(["-c", "core.hooksPath=/dev/null", "-c", "gpg.program=gpg", "-c", "gpg.ssh.program=ssh-keygen", "-c", "gpg.x509.program=gpgsm"]);
+    }
+    command.args(args).env("GIT_TERMINAL_PROMPT", "0").env("GIT_EDITOR", "true");
     command.envs(env.iter().copied());
     if let Some(credentials) = credentials {
         // `git` asks this program for the name and the password instead of the terminal.
@@ -508,19 +526,20 @@ impl GitProvider for Git2Provider {
             GitCommand::StashPop(i) => vec!["stash".into(), "pop".into(), stash(i)],
             GitCommand::StashApply(i) => vec!["stash".into(), "apply".into(), stash(i)],
             GitCommand::StashDrop(i) => vec!["stash".into(), "drop".into(), stash(i)],
-            GitCommand::CreateTag { name, message: None } => vec!["tag".into(), name.clone()],
+            GitCommand::CreateTag { name, message: None } => vec!["tag".into(), positional(name)?],
             GitCommand::CreateTag { name, message: Some(m) } => {
-                vec!["tag".into(), "-a".into(), name.clone(), "-m".into(), m.clone()]
+                vec!["tag".into(), "-a".into(), positional(name)?, "-m".into(), m.clone()]
             }
-            GitCommand::DeleteTag(name) => vec!["tag".into(), "-d".into(), name.clone()],
-            GitCommand::CheckoutDetached(name) => vec!["checkout".into(), "--detach".into(), name.clone()],
-            GitCommand::Merge(branch) => vec!["merge".into(), "--no-edit".into(), branch.clone()],
+            GitCommand::DeleteTag(name) => vec!["tag".into(), "-d".into(), positional(name)?],
+            GitCommand::CheckoutDetached(name) => vec!["checkout".into(), "--detach".into(), positional(name)?],
+            GitCommand::Merge(branch) => vec!["merge".into(), "--no-edit".into(), positional(branch)?],
             GitCommand::MergeAbort => vec!["merge".into(), "--abort".into()],
-            GitCommand::Rebase(onto) => vec!["rebase".into(), onto.clone()],
+            GitCommand::Rebase(onto) => vec!["rebase".into(), positional(onto)?],
             GitCommand::RebaseInteractive { onto, todo } => {
                 // `git` opens the todo list in an editor; ours copies the edited list over it.
-                let file = std::env::temp_dir().join(format!("rustcode-rebase-todo-{}", std::process::id()));
-                std::fs::write(&file, todo).map_err(|e| format!("cannot write the rebase list: {e}"))?;
+                positional(onto)?;
+                let file = crate::programs::private_dir().map_err(|e| e.to_string())?.join(format!("rebase-todo-{}", std::process::id()));
+                crate::programs::write_private(&file, todo, false).map_err(|e| format!("cannot write the rebase list: {e}"))?;
                 let editor = format!("cp {}", shell_quote(&file.to_string_lossy()));
                 let result = git_output_env(folder, &["rebase", "-i", onto], None, &[("GIT_SEQUENCE_EDITOR", &editor)]);
                 let _ = std::fs::remove_file(&file);
@@ -531,7 +550,7 @@ impl GitProvider for Git2Provider {
             GitCommand::RebaseContinue => vec!["-c".into(), "core.editor=true".into(), "rebase".into(), "--continue".into()],
             GitCommand::RebaseSkip => vec!["rebase".into(), "--skip".into()],
             GitCommand::RebaseAbort => vec!["rebase".into(), "--abort".into()],
-            GitCommand::CherryPick(id) => vec!["cherry-pick".into(), id.clone()],
+            GitCommand::CherryPick(id) => vec!["cherry-pick".into(), positional(id)?],
             GitCommand::CherryPickContinue => {
                 vec!["-c".into(), "core.editor=true".into(), "cherry-pick".into(), "--continue".into()]
             }
@@ -552,8 +571,8 @@ impl GitProvider for Git2Provider {
                 vec!["commit".into(), "--amend".into(), "--no-edit".into()]
             }
             GitCommand::Amend(message) => vec!["commit".into(), "--amend".into(), "-m".into(), message.trim().into()],
-            GitCommand::AddRemote { name, url } => vec!["remote".into(), "add".into(), name.clone(), url.clone()],
-            GitCommand::RemoveRemote(name) => vec!["remote".into(), "remove".into(), name.clone()],
+            GitCommand::AddRemote { name, url } => vec!["remote".into(), "add".into(), positional(name)?, positional(url)?],
+            GitCommand::RemoveRemote(name) => vec!["remote".into(), "remove".into(), positional(name)?],
             GitCommand::PullRequestCreate { title, body } => {
                 return if title.trim().is_empty() {
                     gh(&["pr", "create", "--fill"])
@@ -615,7 +634,7 @@ impl GitProvider for Git2Provider {
     }
 
     fn rebase_candidates(&self, folder: &Path, onto: &str) -> Result<Vec<CommitInfo>, String> {
-        let range = format!("{onto}..HEAD");
+        let range = format!("{}..HEAD", positional(onto)?);
         let text = run_git_all(folder, &["log", "--reverse", "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%s", &range])?;
         Ok(text.lines().filter_map(parse_commit_line).collect())
     }
@@ -636,7 +655,7 @@ impl GitProvider for Git2Provider {
     }
 
     fn show_commit(&self, folder: &Path, commit: &str) -> Result<String, String> {
-        run_git_all(folder, &["show", "--stat", "--patch", "--format=fuller", "--show-signature", commit])
+        run_git_all(folder, &["show", "--stat", "--patch", "--format=fuller", "--show-signature", &positional(commit)?])
     }
 
     fn submodules(&self, folder: &Path) -> Result<Vec<SubmoduleInfo>, String> {

@@ -18,7 +18,9 @@ pub struct PythonKernels;
 pub(crate) fn python_for(folder: &Path) -> Option<PathBuf> {
     let venvs = ["venv", ".venv", "env", ".env"];
     let relative: &[&str] = if cfg!(windows) { &["Scripts", "python.exe"] } else { &["bin", "python"] };
-    let local = venvs.iter().map(|venv| relative.iter().fold(folder.join(venv), |path, part| path.join(part))).find(|p| p.is_file());
+    // A virtual environment in the folder is a program from the folder: only when it is trusted.
+    let trusted = crate::programs::folder_is_trusted(folder);
+    let local = venvs.iter().map(|venv| relative.iter().fold(folder.join(venv), |path, part| path.join(part))).find(|p| trusted && p.is_file());
     local.or_else(|| {
         let names: &[&str] = if cfg!(windows) { &["python", "python3"] } else { &["python3", "python"] };
         names.iter().find_map(|name| crate::programs::find_program(name))
@@ -32,7 +34,7 @@ pub(crate) fn python_environments(folder: &Path) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = ["venv", ".venv", "env", ".env"]
         .iter()
         .map(|venv| relative.iter().fold(folder.join(venv), |path, part| path.join(part)))
-        .filter(|p| p.is_file())
+        .filter(|p| p.is_file() && crate::programs::folder_is_trusted(folder))
         .collect();
     let names: &[&str] = if cfg!(windows) { &["python", "python3"] } else { &["python3", "python"] };
     found.extend(names.iter().filter_map(|name| crate::programs::find_program(name)));

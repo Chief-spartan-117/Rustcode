@@ -53,7 +53,11 @@ pub(crate) fn tool_urls(output: &str) -> ToolUrls {
         let lower = line.to_lowercase();
         let Some(start) = line.find("http://").or_else(|| line.find("https://")) else { continue };
         let url = line[start..].split_whitespace().next().unwrap_or_default().trim_end_matches(['.', ',', ')']);
-        if url.is_empty() {
+        // These tools serve on this computer. A page printed by a project's own program must not
+        // send the user to another site, where it would run scripts.
+        let rest = url.split("://").nth(1).unwrap_or_default();
+        let local = ["127.0.0.1", "localhost", "[::1]"].iter().any(|host| rest.strip_prefix(host).is_some_and(|after| after.is_empty() || after.starts_with([':', '/', '?', '#'])));
+        if url.is_empty() || !local {
             continue;
         }
         if lower.contains("devtools") {

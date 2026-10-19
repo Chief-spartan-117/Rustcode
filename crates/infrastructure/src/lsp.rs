@@ -427,6 +427,10 @@ impl Drop for Server {
 }
 
 fn start_server(spec: &ServerSpec, folder: &Path, installable: bool) -> Result<Server, String> {
+    // rust-analyzer runs the project's build scripts and procedural macros.
+    if spec.name == "rust-analyzer" && !crate::programs::folder_is_trusted(folder) {
+        return Err("rust-analyzer is off: this folder is not trusted. Run \"Workspace: Trust This Folder\" to turn it on".to_owned());
+    }
     let (program, args) = spec
         .commands
         .iter()

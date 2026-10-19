@@ -1,6 +1,7 @@
 //! Application layer: use cases and the ports (traits) infrastructure must implement.
 
 pub mod commands;
+pub mod workspace_trust;
 mod debugger;
 mod diagnostics;
 pub mod explorer;

@@ -302,6 +302,7 @@ pub(crate) mod ids {
     pub const MOVE_TAB_NEXT_GROUP: CommandId = CommandId("view.moveTabToNextGroup");
     pub const REFRESH_EXPLORER: CommandId = CommandId("explorer.refresh");
     pub const ADD_FOLDER: CommandId = CommandId("workspace.addFolder");
+    pub const TRUST_FOLDER: CommandId = CommandId("workspace.trust");
     pub const FOCUS_EXPLORER: CommandId = CommandId("explorer.focus");
     pub const TOGGLE_TERMINAL: CommandId = CommandId("view.toggleTerminal");
     pub const NEW_TERMINAL: CommandId = CommandId("terminal.new");
@@ -623,6 +624,7 @@ pub(crate) fn builtin_registry() -> CommandRegistry {
         (REFRESH_EXPLORER, "Explorer: Refresh", None),
         (FOCUS_EXPLORER, "Explorer: Focus on Explorer", Some("secondary-shift-e")),
         (ADD_FOLDER, "Workspace: Add Folder to Workspace...", None),
+        (TRUST_FOLDER, "Workspace: Trust This Folder", None),
         (CUT, "Edit: Cut", Some("secondary-x")),
         (COPY, "Edit: Copy", Some("secondary-c")),
         (PASTE, "Edit: Paste", Some("secondary-v")),
@@ -1734,6 +1736,7 @@ impl EditorView {
             REFRESH_EXPLORER => self.refresh_explorer(cx),
             FOCUS_EXPLORER => self.focus_explorer(cx),
             ADD_FOLDER => self.open_palette(PaletteMode::AddFolder, cx),
+            TRUST_FOLDER => self.trust_folders(cx),
             CUT => self.cut(cx),
             COPY => self.copy(cx),
             PASTE => self.paste(cx),

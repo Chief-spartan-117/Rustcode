@@ -86,6 +86,10 @@ impl DiagnosticsProvider for CargoCheck {
     fn check_with(&self, folder: &Path, command: &str) -> Result<Vec<Diagnostic>, String> {
         // Only the two commands that print compiler messages; anything else is a plain check.
         let command = if command == "clippy" { "clippy" } else { "check" };
+        // `cargo check` runs the project's build scripts and procedural macros.
+        if !crate::programs::folder_is_trusted(folder) {
+            return Err("cargo check is off: this folder is not trusted. Run \"Workspace: Trust This Folder\" to turn it on".to_owned());
+        }
         let output = Command::new("cargo")
             .args([command, "--workspace", "--all-targets", "--message-format=json"])
             .current_dir(folder)

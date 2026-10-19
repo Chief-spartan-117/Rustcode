@@ -34,7 +34,8 @@ pub(crate) enum ProcessError {
 /// The program to start: the project's copy when `spec` names one and a folder above the file has
 /// it, else the one found on `PATH` and the usual tool folders.
 pub(crate) fn resolve(spec: &Spec) -> Option<PathBuf> {
-    if let Some(local) = spec.local_bin {
+    // The project's own copy is code from the project: only when its folder is trusted.
+    if let Some(local) = spec.local_bin.filter(|_| crate::programs::folder_is_trusted(spec.cwd)) {
         let mut dir: Option<&Path> = Some(spec.cwd);
         while let Some(folder) = dir {
             // On Windows the project's shim is `prettier.cmd`.

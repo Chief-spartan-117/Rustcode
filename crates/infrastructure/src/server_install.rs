@@ -444,14 +444,23 @@ fn installed_program(dir: &std::path::Path, program: &str) -> Option<PathBuf> {
         .find_map(|folder| crate::programs::with_suffix(&folder.join(program), suffixes))
 }
 
+/// The most an archive may hold once unpacked.
+pub(crate) const MAX_UNPACKED_BYTES: u64 = 4 << 30;
+
 /// Unpack the zip at `file` into `dest`. Only entries under `only` (when given) are taken, without
 /// that folder in their path. Entries that would leave `dest` are skipped, and the executable
 /// bit is kept, which `tar` does for the other archives.
 pub(crate) fn extract_zip(file: &std::path::Path, dest: &std::path::Path, only: Option<&str>) -> Result<(), String> {
     let input = std::fs::File::open(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let mut zip = zip::ZipArchive::new(input).map_err(|e| format!("the download is not a zip file: {e}"))?;
+    let mut total = 0u64;
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|e| e.to_string())?;
+        // A small archive can claim to hold a huge amount (a zip bomb).
+        total = total.saturating_add(entry.size());
+        if total > MAX_UNPACKED_BYTES {
+            return Err("the archive holds more data than expected, so it was not unpacked".to_owned());
+        }
         let Some(path) = entry.enclosed_name() else { continue };
         let relative = match only {
             Some(folder) => match path.strip_prefix(folder) {
@@ -507,6 +516,7 @@ pub(crate) fn release_file_digest(release: &serde_json::Value, url: &str) -> Opt
 }
 
 /// Put the file at `url` (already known to be `tag`) in `pkg/<name>`, replacing what was there.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn install_from_url(spec: &DownloadSpec, asset: Asset, url: &str, tag: &str, root: &std::path::Path) -> Result<(), String> {
     install_checked(spec, asset, url, tag, None, root)
 }

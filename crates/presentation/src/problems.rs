@@ -7,6 +7,7 @@ use gpui::{div, prelude::*, px, uniform_list, Context, MouseButton, MouseDownEve
 use rustcode_application::{count_by_severity, Diagnostic, Severity};
 
 use crate::editor_view::EditorView;
+use crate::notifications::ToastLevel;
 use crate::shell::{PanelTab, ROW_HEIGHT};
 
 pub(crate) struct ProblemsState {
@@ -116,6 +117,27 @@ pub(crate) fn severity_color(theme: &crate::theme::Theme, severity: Severity) ->
 }
 
 impl EditorView {
+    /// Let the open folders run their own code: `cargo check`, rust-analyzer and the tools in a
+    /// project's `node_modules/.bin`. The folders are added to `~/.rustcode/trusted-folders`.
+    pub(crate) fn trust_folders(&mut self, cx: &mut Context<Self>) {
+        let Some(file) = dirs::home_dir().map(|home| home.join(".rustcode").join("trusted-folders")) else {
+            self.notify_user(ToastLevel::Error, "no home folder to keep the list of trusted folders in".to_owned(), cx);
+            return;
+        };
+        let mut list = std::fs::read_to_string(&file).unwrap_or_default();
+        for tree in &self.shell.explorers {
+            list = rustcode_application::workspace_trust::with_trusted(&list, tree.root());
+        }
+        let saved = file.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&file, list));
+        match saved {
+            Ok(()) => {
+                self.notify_user(ToastLevel::Info, "The open folders are trusted: their tools may run.".to_owned(), cx);
+                self.run_diagnostics(cx);
+            }
+            Err(error) => self.notify_user(ToastLevel::Error, format!("cannot save {}: {error}", file.display()), cx),
+        }
+    }
+
     /// Check the workspace in the background. A request while a check runs queues one more run.
     pub(crate) fn run_diagnostics(&mut self, cx: &mut Context<Self>) {
         if self.problems.running {
