@@ -75,6 +75,8 @@ pub(crate) struct TerminalState {
     task: Option<Task<()>>,
     /// The link of an extension that the mouse is over.
     pub hover_link: Option<HoverLink>,
+    /// Part of a line a trackpad scrolled that has not added up to a whole line yet.
+    scroll_remainder: f32,
 }
 
 impl TerminalState {
@@ -91,6 +93,7 @@ impl TerminalState {
             next_serial: 1,
             task: None,
             hover_link: None,
+            scroll_remainder: 0.0,
         }
     }
 
@@ -855,8 +858,11 @@ impl EditorView {
             )
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _w, cx| this.terminal_hover(event, cx)))
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _w, cx| {
-                let delta = event.delta.pixel_delta(px(line_height())).y;
-                let lines = (delta / px(line_height())).round() as i32;
+                // A trackpad sends deltas well under one line; keep the rest until it adds up.
+                let delta = f32::from(event.delta.pixel_delta(px(line_height())).y) / line_height();
+                let total = this.terminal.scroll_remainder + delta;
+                let lines = total.trunc() as i32;
+                this.terminal.scroll_remainder = total - lines as f32;
                 if lines != 0 {
                     this.terminal_scroll(lines, cx);
                 }
