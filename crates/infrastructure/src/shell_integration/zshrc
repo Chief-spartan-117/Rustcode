@@ -1,0 +1,10 @@
+# The user's .zshrc, then the marks. From here on the shell is the user's own again.
+if [[ -n $RUSTCODE_USER_ZDOTDIR ]]; then
+  ZDOTDIR=$RUSTCODE_USER_ZDOTDIR
+  [[ -f $RUSTCODE_USER_ZDOTDIR/.zshrc ]] && builtin source "$RUSTCODE_USER_ZDOTDIR/.zshrc"
+  ZDOTDIR=$RUSTCODE_USER_ZDOTDIR
+fi
+if [[ -n $RUSTCODE_INTEGRATION && -f $RUSTCODE_INTEGRATION/zsh.sh ]]; then
+  builtin source "$RUSTCODE_INTEGRATION/zsh.sh"
+fi
+unset RUSTCODE_USER_ZDOTDIR RUSTCODE_ZDOTDIR RUSTCODE_INTEGRATION

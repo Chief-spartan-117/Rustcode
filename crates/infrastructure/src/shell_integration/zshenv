@@ -1,0 +1,8 @@
+# RustCode shell integration. The user's own .zshenv runs first, as if ZDOTDIR had not moved.
+if [[ -n $RUSTCODE_USER_ZDOTDIR && -f $RUSTCODE_USER_ZDOTDIR/.zshenv ]]; then
+  RUSTCODE_ZDOTDIR=$ZDOTDIR
+  ZDOTDIR=$RUSTCODE_USER_ZDOTDIR
+  builtin source "$RUSTCODE_USER_ZDOTDIR/.zshenv"
+  RUSTCODE_USER_ZDOTDIR=$ZDOTDIR
+  ZDOTDIR=$RUSTCODE_ZDOTDIR
+fi

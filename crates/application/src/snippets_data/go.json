@@ -1,0 +1,18 @@
+{
+  "main": {"prefix": "main", "body": ["package main", "", "func main() {", "\t$0", "}"]},
+  "func": {"prefix": "fn", "body": ["func ${1:name}(${2}) ${3}{", "\t$0", "}"]},
+  "method": {"prefix": "meth", "body": ["func (${1:r} *${2:Type}) ${3:name}(${4}) ${5}{", "\t$0", "}"]},
+  "if err": {"prefix": "iferr", "body": ["if err != nil {", "\treturn ${1:err}", "}"]},
+  "err check": {"prefix": "errn", "body": ["${1:result}, err := ${2:call}(${3})", "if err != nil {", "\treturn ${4:err}", "}"]},
+  "for range": {"prefix": "forr", "body": ["for ${1:i}, ${2:v} := range ${3:items} {", "\t$0", "}"]},
+  "for": {"prefix": "for", "body": ["for ${1:i} := 0; ${1} < ${2:n}; ${1}++ {", "\t$0", "}"]},
+  "struct": {"prefix": "st", "body": ["type ${1:Name} struct {", "\t$0", "}"]},
+  "interface": {"prefix": "iface", "body": ["type ${1:Name} interface {", "\t$0", "}"]},
+  "test": {"prefix": "tfn", "body": ["func Test${1:Name}(t *testing.T) {", "\t$0", "}"]},
+  "table test": {"prefix": "tt", "body": ["func Test${1:Name}(t *testing.T) {", "\ttests := []struct {", "\t\tname string", "\t\t$2", "\t}{", "\t\t{name: \"${3:case}\"},", "\t}", "\tfor _, tt := range tests {", "\t\tt.Run(tt.name, func(t *testing.T) {", "\t\t\t$0", "\t\t})", "\t}", "}"]},
+  "http handler": {"prefix": "httph", "body": ["func ${1:handler}(w http.ResponseWriter, r *http.Request) {", "\t$0", "}"]},
+  "goroutine": {"prefix": "gofn", "body": ["go func() {", "\t$0", "}()"]},
+  "defer": {"prefix": "def", "body": ["defer func() {", "\t$0", "}()"]},
+  "switch": {"prefix": "switch", "body": ["switch ${1:value} {", "case ${2:x}:", "\t$0", "default:", "}"]},
+  "select": {"prefix": "sel", "body": ["select {", "case ${1:v} := <-${2:ch}:", "\t$0", "case <-${3:ctx.Done()}:", "\treturn", "}"]}
+}

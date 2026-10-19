@@ -1,0 +1,12 @@
+[package]
+name = "rustcode-domain"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ropey.workspace = true
+regex.workspace = true
+unicode-segmentation.workspace = true
+thiserror.workspace = true
+pulldown-cmark = { version = "0.13", default-features = false }
+similar = "2"

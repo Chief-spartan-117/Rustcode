@@ -1,0 +1,17 @@
+{
+	"name": "Monokai Italic",
+	"include": "./dark_vs.json",
+	"colors": {
+		"editor.background": "#272822",
+		"editor.foreground": "#F8F8F2",
+		"editor.selectionBackground": "#49483E",
+		"editorCursor.foreground": "#F8F8F0"
+	},
+	"tokenColors": [
+		{ "scope": "comment", "settings": { "foreground": "#88846F", "fontStyle": "italic" } },
+		{ "scope": "keyword", "settings": { "foreground": "#F92672" } },
+		{ "scope": "string", "settings": { "foreground": "#E6DB74" } },
+		{ "scope": "entity.name.function", "settings": { "foreground": "#A6E22E", "fontStyle": "bold" } },
+		{ "scope": "constant.numeric", "settings": { "foreground": "#AE81FF" } }
+	]
+}

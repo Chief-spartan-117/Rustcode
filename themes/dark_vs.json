@@ -1,0 +1,26 @@
+{
+	"$schema": "vscode://schemas/color-theme",
+	"name": "Dark (Visual Studio)",
+	"type": "dark",
+	"colors": {
+		"editor.background": "#1E1E1E",
+		"editor.foreground": "#D4D4D4",
+		"editor.selectionBackground": "#264F78",
+		"editorCursor.foreground": "#AEAFAD",
+		"editorLineNumber.foreground": "#858585",
+		"titleBar.activeBackground": "#3C3C3C",
+		"titleBar.activeForeground": "#CCCCCC",
+	},
+	"tokenColors": [
+		// comments
+		{ "scope": ["comment", "punctuation.definition.comment"], "settings": { "foreground": "#6A9955" } },
+		{ "scope": "string", "settings": { "foreground": "#CE9178" } },
+		{ "scope": "constant.numeric", "settings": { "foreground": "#B5CEA8" } },
+		{ "scope": "constant.language", "settings": { "foreground": "#569CD6" } },
+		{ "scope": "keyword, storage.type, storage.modifier", "settings": { "foreground": "#569CD6" } },
+		{ "scope": "entity.name.function, support.function", "settings": { "foreground": "#DCDCAA" } },
+		{ "scope": ["entity.name.type", "support.type", "support.class"], "settings": { "foreground": "#4EC9B0" } },
+		{ "scope": "variable", "settings": { "foreground": "#9CDCFE" } },
+		{ "scope": "constant.character.escape", "settings": { "foreground": "#D7BA7D" } },
+	]
+}

@@ -1,0 +1,24 @@
+[package]
+name = "rustcode-infrastructure"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustcode-domain.workspace = true
+rustcode-application.workspace = true
+serde.workspace = true
+json5.workspace = true
+irosashi.workspace = true
+plist.workspace = true
+notify.workspace = true
+trash.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
+grep-regex.workspace = true
+regex.workspace = true
+grep-searcher.workspace = true
+ignore.workspace = true
+grep-matcher = "0.1"
+git2.workspace = true
+portable-pty.workspace = true
+zip.workspace = true

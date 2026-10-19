@@ -1,0 +1,14 @@
+{
+  "main": {"prefix": "main", "body": ["fn main() {", "    $0", "}"]},
+  "fn": {"prefix": "fn", "body": ["fn ${1:name}(${2}) ${3:-> ${4:()} }{", "    $0", "}"]},
+  "struct": {"prefix": "st", "body": ["struct ${1:Name} {", "    $0", "}"]},
+  "enum": {"prefix": "en", "body": ["enum ${1:Name} {", "    $0", "}"]},
+  "impl": {"prefix": "impl", "body": ["impl ${1:Type} {", "    $0", "}"]},
+  "trait impl": {"prefix": "implt", "body": ["impl ${1:Trait} for ${2:Type} {", "    $0", "}"]},
+  "test": {"prefix": "test", "body": ["#[test]", "fn ${1:name}() {", "    $0", "}"]},
+  "test module": {"prefix": "tmod", "body": ["#[cfg(test)]", "mod tests {", "    use super::*;", "", "    #[test]", "    fn ${1:name}() {", "        $0", "    }", "}"]},
+  "match": {"prefix": "match", "body": ["match ${1:value} {", "    ${2:pattern} => $3,", "    _ => $0,", "}"]},
+  "if let": {"prefix": "iflet", "body": ["if let ${1:Some(x)} = ${2:value} {", "    $0", "}"]},
+  "derive": {"prefix": "derive", "body": "#[derive(${1:Debug, Clone})]"},
+  "println": {"prefix": "pl", "body": "println!(\"${1:{}}\"${2:, $3});"}
+}

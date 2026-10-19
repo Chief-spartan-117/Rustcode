@@ -1,0 +1,35 @@
+[package]
+name = "rustcode-presentation"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustcode-domain.workspace = true
+rustcode-application.workspace = true
+gpui.workspace = true
+# Drawing SVG pictures: the same versions and features gpui draws icons with.
+resvg = { version = "0.45", features = ["text", "system-fonts"] }
+image = { version = "0.25", default-features = false }
+smallvec = "1"
+serde_json.workspace = true
+dirs.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
+# The system webview that shows the pages of extensions. Linux needs GTK's WebKit, which is not
+# set up here: pages there are not shown yet.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+wry = { version = "0.57", default-features = false, features = ["os-webview"] }
+http = "1"
+
+# A snapshot of a page, to show in its place while the window draws something over it.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSView", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSDictionary", "NSValue", "NSError", "NSObject"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "WKWebView", "WKSnapshotConfiguration"] }
+raw-window-handle = "0.6"

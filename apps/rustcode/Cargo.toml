@@ -1,0 +1,16 @@
+[package]
+name = "rustcode"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustcode-domain.workspace = true
+rustcode-application.workspace = true
+rustcode-infrastructure.workspace = true
+rustcode-presentation.workspace = true
+gpui.workspace = true
+dirs.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Sets the dock icon while running from a plain binary (a bundle gets it from its icns).
+cocoa = "0.26"

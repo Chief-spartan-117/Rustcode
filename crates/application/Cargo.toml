@@ -1,0 +1,15 @@
+[package]
+name = "rustcode-application"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustcode-domain.workspace = true
+thiserror.workspace = true
+ignore.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+json5.workspace = true
+regex.workspace = true
+fancy-regex.workspace = true
+alacritty_terminal.workspace = true

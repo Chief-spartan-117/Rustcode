@@ -1,0 +1,15 @@
+{
+  "main guard": {"prefix": "ifmain", "body": ["if __name__ == \"__main__\":", "    ${1:main()}"]},
+  "def": {"prefix": "def", "body": ["def ${1:name}(${2}):", "    ${0:pass}"]},
+  "async def": {"prefix": "adef", "body": ["async def ${1:name}(${2}):", "    ${0:pass}"]},
+  "class": {"prefix": "class", "body": ["class ${1:Name}:", "    def __init__(self${2}):", "        ${0:pass}"]},
+  "dataclass": {"prefix": "dataclass", "body": ["@dataclass", "class ${1:Name}:", "    ${0:field: int}"]},
+  "for": {"prefix": "forr", "body": ["for ${1:item} in ${2:items}:", "    $0"]},
+  "list comprehension": {"prefix": "lc", "body": "[${1:x} for ${2:x} in ${3:items}${4: if ${5:cond}}]"},
+  "dict comprehension": {"prefix": "dc", "body": "{${1:k}: ${2:v} for ${3:k}, ${4:v} in ${5:items}}"},
+  "try": {"prefix": "tryex", "body": ["try:", "    $1", "except ${2:Exception} as e:", "    ${0:raise}"]},
+  "with open": {"prefix": "wopen", "body": ["with open(${1:path}, ${2:\"r\"}) as ${3:f}:", "    $0"]},
+  "pytest": {"prefix": "pytest", "body": ["def test_${1:name}():", "    assert ${0:True}"]},
+  "argparse": {"prefix": "argparse", "body": ["import argparse", "", "parser = argparse.ArgumentParser(description=\"${1}\")", "parser.add_argument(\"${2:name}\")", "args = parser.parse_args()"]},
+  "print": {"prefix": "pr", "body": "print(${1})"}
+}

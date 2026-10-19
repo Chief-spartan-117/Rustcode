@@ -1,0 +1,4 @@
+# `block` and `proc-macro-error2` are transitive deps of gpui and trigger a
+# future-incompat note on every build. Not fixable here; remove once gpui upgrades.
+[future-incompat-report]
+frequency = "never"

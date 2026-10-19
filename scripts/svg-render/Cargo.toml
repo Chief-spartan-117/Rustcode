@@ -1,0 +1,11 @@
+[package]
+name = "svg-render"
+version = "0.1.0"
+edition = "2021"
+description = "Renders an SVG to a PNG at a given size. Used to build the application icon."
+
+# Not part of the editor's workspace.
+[workspace]
+
+[dependencies]
+resvg = "0.45"
