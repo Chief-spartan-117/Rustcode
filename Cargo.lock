@@ -5637,7 +5637,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cocoa 0.26.0",
  "dirs 6.0.0",
@@ -5650,7 +5650,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-application"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alacritty_terminal",
  "fancy-regex",
@@ -5665,7 +5665,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-domain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pulldown-cmark",
  "regex",
@@ -5677,7 +5677,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-infrastructure"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dirs 6.0.0",
  "git2",
@@ -5701,7 +5701,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-presentation"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "block2",
  "chrono",

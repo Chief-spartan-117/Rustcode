@@ -47,7 +47,10 @@ impl EditorView {
         self.updates.telemetry = telemetry;
         self.updates.version = version.to_owned();
         self.track("app_start");
-        if let Some(staged) = self.updates.service.staged() {
+        // A downloaded update is only offered where this copy can really switch to it; else the
+        // button would come back after every restart.
+        let staged = self.updates.service.unavailable().is_none().then(|| self.updates.service.staged()).flatten();
+        if let Some(staged) = staged {
             self.updates.state = UpdateState::Ready(staged);
             cx.notify();
         } else if self.config.settings.boolean("rustcode.update.check").unwrap_or(true) {

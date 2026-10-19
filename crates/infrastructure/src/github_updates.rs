@@ -70,6 +70,12 @@ impl UpdateService for GithubUpdates {
         let Some(bundle) = &self.bundle else {
             return Some("RustCode is not running from an app bundle (a build folder, for example), so it cannot replace itself".to_owned());
         };
+        // From a disk image, or from the random place macOS runs a downloaded app from until it
+        // is moved, the app cannot replace itself.
+        let place = bundle.to_string_lossy();
+        if place.contains("/AppTranslocation/") || place.starts_with("/Volumes/") {
+            return Some("RustCode is running from a disk image or a download folder: drag it to the Applications folder, open it from there, and it can update itself".to_owned());
+        }
         let parent_writable = bundle.parent().and_then(|p| std::fs::metadata(p).ok()).is_some_and(|m| !m.permissions().readonly());
         (!parent_writable).then(|| format!("{} is in a folder that cannot be written to", bundle.display()))
     }

@@ -329,8 +329,11 @@ fn main() {
     let fs = Arc::new(StdFileSystem);
     let args = parse_args();
     let chrome = args.chrome.clone();
+    // Started from the Dock or Finder, the working folder is "/": there is no project, and the
+    // window offers to open one.
+    let no_project = args.file.is_none() && std::env::current_dir().is_ok_and(|dir| dir == std::path::Path::new("/"));
     // A folder with no file named: nothing is open, so the empty state shows.
-    let show_empty = args.file.as_ref().is_some_and(|path| path.is_dir());
+    let show_empty = no_project || args.file.as_ref().is_some_and(|path| path.is_dir());
     let (ui_font, code_font) = (
         args.font
             .clone()
@@ -347,7 +350,7 @@ fn main() {
             None => Arc::new(NullSessionStore),
         };
     // With no file named, reopen what was open last time here.
-    let restore_session = args.file.is_none() && session.load(&root).is_some();
+    let restore_session = args.file.is_none() && !no_project && session.load(&root).is_some();
     let document = if restore_session {
         Document::new(
             DocumentId(1),
@@ -479,6 +482,9 @@ fn main() {
                         });
                         if show_empty {
                             view.update(cx, |view, _| view.show_empty_state());
+                        }
+                        if no_project {
+                            view.update(cx, |view, _| view.clear_workspace());
                         }
                         window.focus(&view.focus_handle(cx));
                         view

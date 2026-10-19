@@ -29,6 +29,12 @@ impl EditorView {
         self.placeholder_doc = Some(self.document.id);
     }
 
+    /// Start with no folder open: the explorer is empty and says how to open one.
+    pub fn clear_workspace(&mut self) {
+        self.shell.explorers.clear();
+        self.shell.sync_watches();
+    }
+
     pub(crate) fn render_empty_state(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = &self.theme;
         let (text, dim, border, hover, fill) =
