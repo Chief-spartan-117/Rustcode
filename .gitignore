@@ -1,3 +1,4 @@
 /target
 .DS_Store
 /scripts/svg-render/target
+*.dxvk-cache
