@@ -41,10 +41,32 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Signing and notarization run only when the repository has the secrets (see docs/RELEASING.md);
+      # without them the build is unsigned, as before.
+      - name: Import the Developer ID certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then echo "no certificate secret; building unsigned"; exit 0; fi
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm "$RUNNER_TEMP/cert.p12"
       - name: Build the app and the release files
         env:
           # Where the built program looks for newer releases (see `rustcode.update.repository`).
           RUSTCODE_UPDATE_REPO: ${{ github.repository }}
+          CODESIGN_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: scripts/bundle-macos.sh release --dist
       - name: Attach the files to the release
         env:
@@ -65,13 +87,34 @@ jobs:
         env:
           RUSTCODE_UPDATE_REPO: ${{ github.repository }}
         run: cargo build --release -p rustcode
+      # Authenticode signing (SHA-256 digest, RFC 3161 timestamp) runs only when WINDOWS_CERTIFICATE
+      # (a base64 .pfx) is set; without it the files are unsigned.
       - name: Make the installer and the zip
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $version = "${{ needs.release-please.outputs.tag_name }}".TrimStart("v")
+          function Sign($path) {
+            if (-not $env:WINDOWS_CERTIFICATE) { return }
+            $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1).FullName
+            & $signtool sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $path
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+            & $signtool verify /pa $path
+            Remove-Item $pfx
+          }
           choco install innosetup -y --no-progress
+          Sign "target/release/rustcode.exe"
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" scripts/windows-installer.iss
+          Sign "target/dist/RustCode-$version-windows-x64-setup.exe"
           Compress-Archive -Path target/release/rustcode.exe -DestinationPath "target/dist/RustCode-$version-windows-x64.zip"
+          Get-ChildItem target/dist -File | Where-Object { $_.Extension -ne ".sha256" } | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Set-Content -Encoding ascii "$($_.FullName).sha256"
+          }
       - name: Attach the files to the release
         shell: bash
         env:
