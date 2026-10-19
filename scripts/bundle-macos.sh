@@ -11,10 +11,28 @@
 #                                      also make the release files in target/dist: the zip the
 #                                      updater downloads (RustCode-<version>-macos-<arch>.zip),
 #                                      its .sha256, and a .dmg. Upload all three to a GitHub release.
-# Environment: CODESIGN_IDENTITY signs the app ("Developer ID Application: ..."; "-" signs ad hoc).
-#              NOTARY_PROFILE (a `xcrun notarytool store-credentials` name) notarizes the zip too.
+# Environment: CODESIGN_IDENTITY signs the app and the .dmg ("Developer ID Application: ..."; "-" signs ad hoc).
+#              Notarization (needs a real identity) uses one of:
+#                NOTARY_PROFILE   a `xcrun notarytool store-credentials` name, or
+#                APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   an app-specific password.
+#              It notarizes and staples both the app (zip) and the .dmg.
+#              Every file in target/dist gets a .sha256 next to it.
 set -eu
 
+# notarize FILE: submit to Apple and wait; a rejection makes the script stop.
+notarize() {
+    if [ -n "${NOTARY_PROFILE:-}" ]; then
+        xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait
+    else
+        xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+    fi
+}
+
+NOTARIZE=no
+if [ -n "${NOTARY_PROFILE:-}" ] || { [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; }; then
+    NOTARIZE=yes
+fi
 PROFILE=${1:-release}
 WITH_SERVERS=no
 DIST=no
@@ -65,8 +83,19 @@ if [ "$WITH_SERVERS" = "yes" ]; then
     RUSTCODE_SERVERS_DIR="$APP/Contents/Resources/servers" "target/$PROFILE/rustcode" --install-language-servers ${RUSTCODE_BUNDLE_SERVERS:-all -rust-analyzer} || \
         echo "some language servers could not be added; they will install themselves when first needed"
 fi
-if [ -n "${CODESIGN_IDENTITY:-}" ]; then
-    codesign --force --deep --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP"
+# Ad hoc signing ("-") needs no Apple account; it is the default. A real identity adds the
+# hardened runtime and a secure timestamp.
+CODESIGN_IDENTITY=${CODESIGN_IDENTITY:--}
+if [ "$CODESIGN_IDENTITY" = "-" ]; then
+    SIGN_OPTS="--timestamp=none"
+    DMG_OPTS="--timestamp=none"
+else
+    SIGN_OPTS="--options runtime --timestamp"
+    DMG_OPTS="--timestamp"
+fi
+if [ -n "$CODESIGN_IDENTITY" ]; then
+    # shellcheck disable=SC2086
+    codesign --force --deep $SIGN_OPTS --sign "$CODESIGN_IDENTITY" "$APP"
     codesign --verify --deep --strict "$APP"
 fi
 echo "built $APP"
@@ -79,18 +108,27 @@ if [ "$DIST" = "yes" ]; then
     mkdir -p "$DIST_DIR"
     # ditto keeps the bundle's metadata; the updater unpacks the zip with `ditto -x -k`.
     ditto -c -k --keepParent "$APP" "$DIST_DIR/$NAME.zip"
-    if [ -n "${NOTARY_PROFILE:-}" ]; then
-        xcrun notarytool submit "$DIST_DIR/$NAME.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+    if [ "$NOTARIZE" = "yes" ]; then
+        notarize "$DIST_DIR/$NAME.zip"
         xcrun stapler staple "$APP"
         rm "$DIST_DIR/$NAME.zip"
         ditto -c -k --keepParent "$APP" "$DIST_DIR/$NAME.zip"
     fi
-    (cd "$DIST_DIR" && shasum -a 256 "$NAME.zip" > "$NAME.zip.sha256")
     STAGE=$(mktemp -d)
     cp -R "$APP" "$STAGE/"
     ln -s /Applications "$STAGE/Applications"
     hdiutil create -volname RustCode -srcfolder "$STAGE" -ov -format UDZO "$DIST_DIR/$NAME.dmg" >/dev/null
     rm -rf "$STAGE"
+    # shellcheck disable=SC2086
+    codesign --force $DMG_OPTS --sign "$CODESIGN_IDENTITY" "$DIST_DIR/$NAME.dmg"
+    if [ "$NOTARIZE" = "yes" ]; then
+        notarize "$DIST_DIR/$NAME.dmg"
+        xcrun stapler staple "$DIST_DIR/$NAME.dmg"
+        spctl --assess --type open --context context:primary-signature --verbose=2 "$DIST_DIR/$NAME.dmg"
+        spctl --assess --type execute --verbose=2 "$APP"
+    fi
+    # Checksums come last: stapling changes the files.
+    (cd "$DIST_DIR" && shasum -a 256 "$NAME.zip" > "$NAME.zip.sha256" && shasum -a 256 "$NAME.dmg" > "$NAME.dmg.sha256")
     echo "release files in $DIST_DIR:"
     ls -1 "$DIST_DIR"
 fi
