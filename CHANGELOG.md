@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Chief-spartan-117/Rustcode/compare/v0.2.0...v0.2.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* start without a project from the Dock and stop offering updates that cannot install ([9ca3bb2](https://github.com/Chief-spartan-117/Rustcode/commit/9ca3bb268f5b3a2488c2d9e9c3fad986c50e9736))
+
 ## [0.2.0](https://github.com/Chief-spartan-117/Rustcode/compare/v0.1.0...v0.2.0) (2026-10-19)
 
 
