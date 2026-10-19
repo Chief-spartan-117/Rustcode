@@ -16,6 +16,7 @@ fn extensions_dir() -> Option<PathBuf> {
 
 /// A folder holding only the extension `name` (a link to its unpacked folder), as the host wants.
 fn only(dir: &Path, name: &str) -> PathBuf {
+    std::env::set_var("RUSTCODE_TRUST_ALL", "1");
     let parent = std::env::temp_dir().join(format!("rustcode-real-ext-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&parent);
     std::fs::create_dir_all(&parent).unwrap();
@@ -57,6 +58,7 @@ fn defaults_of(dir: &Path, name: &str) -> serde_json::Map<String, serde_json::Va
 }
 
 fn workspace(name: &str) -> PathBuf {
+    std::env::set_var("RUSTCODE_TRUST_ALL", "1");
     let dir = std::env::temp_dir().join(format!("rustcode-real-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();

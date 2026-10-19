@@ -485,6 +485,8 @@ fn main() {
                         }
                         if no_project {
                             view.update(cx, |view, _| view.clear_workspace());
+                        } else {
+                            view.update(cx, |view, cx| view.warn_if_untrusted(cx));
                         }
                         window.focus(&view.focus_handle(cx));
                         view

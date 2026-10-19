@@ -379,6 +379,10 @@ impl NodeExtensionHost {
     fn start(&self, folders: &[PathBuf]) -> Result<Running, String> {
         let node = js_runtime()
             .ok_or("extensions need a JavaScript runtime, and neither `node` nor `bun` was found (install one, or set RUSTCODE_JS_RUNTIME)")?;
+        // Extensions act on the folders' files and settings, and some run the folders' programs.
+        if let Some(folder) = folders.iter().find(|f| !crate::programs::folder_is_trusted(f)) {
+            return Err(format!("extensions are off: {} is not trusted. Run \"Workspace: Trust This Folder\" to turn them on", folder.display()));
+        }
         let script = host_script_path()?;
         let mut child = Command::new(node)
             .arg(&script)

@@ -117,6 +117,19 @@ pub(crate) fn severity_color(theme: &crate::theme::Theme, severity: Severity) ->
 }
 
 impl EditorView {
+    /// Say once, at start, that the open folders are not trusted and what that turns off.
+    pub fn warn_if_untrusted(&mut self, cx: &mut Context<Self>) {
+        let list = dirs::home_dir().and_then(|home| std::fs::read_to_string(home.join(".rustcode").join("trusted-folders")).ok()).unwrap_or_default();
+        let untrusted = self.shell.explorers.iter().any(|tree| !rustcode_application::workspace_trust::is_trusted(&list, tree.root()));
+        if untrusted {
+            self.notify_user(
+                ToastLevel::Warning,
+                "This folder is not trusted, so language servers, extensions, cargo check and the folder's own tools are off. Run \"Workspace: Trust This Folder\" if you trust its authors.".to_owned(),
+                cx,
+            );
+        }
+    }
+
     /// Let the open folders run their own code: `cargo check`, rust-analyzer and the tools in a
     /// project's `node_modules/.bin`. The folders are added to `~/.rustcode/trusted-folders`.
     pub(crate) fn trust_folders(&mut self, cx: &mut Context<Self>) {
