@@ -55,7 +55,7 @@ You never edit the version or `CHANGELOG.md` by hand.
 
 1. When commits reach `main`, the **Release** workflow opens (or updates) a pull request named "chore(main): release x.y.z". It holds the new version in `Cargo.toml` and the new `CHANGELOG.md` entry, worked out from the commit types above.
 2. A maintainer merges that pull request when a release is wanted. This creates the tag `vx.y.z` and the GitHub release.
-3. The workflow then builds the macOS app (Apple Silicon and Intel) and attaches `RustCode-<version>-macos-<arch>.zip`, its `.sha256`, and a `.dmg` to the release.
+3. The workflow then builds the macOS app (Apple Silicon and Intel) and attaches `RustCode-<version>-macos-<arch>.zip`, its `.sha256` and a `.dmg` to the release. A Windows job attaches `RustCode-<version>-windows-x64-setup.exe` (an installer made with Inno Setup from `scripts/windows-installer.iss`) and a zip holding `rustcode.exe`.
 4. Installed copies of RustCode check this repository's releases and offer the new version through the built-in updater. Builds made by the workflow know the repository (`RUSTCODE_UPDATE_REPO`); a build of your own can set it with the `rustcode.update.repository` setting.
 
 ### One-time repository setup
