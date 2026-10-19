@@ -12,6 +12,8 @@ use crate::text_layout::line_height;
 const PALETTE_WIDTH: f32 = 560.0;
 /// Rows shown at once; the list scrolls to keep the selection visible.
 const VISIBLE_ROWS: usize = 12;
+/// Height of one row of the list, for turning wheel distance into rows.
+const ROW_PITCH: f32 = 26.0;
 
 /// What the palette lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +102,9 @@ pub(crate) struct PaletteState {
     /// Workspace files for quick open, each with its path relative to its folder.
     pub files: Vec<(std::path::PathBuf, String)>,
     pub files_loading: bool,
+    /// Where the mouse wheel scrolled the list to, and the selection it was scrolled for: a new
+    /// selection (a key press) takes the list back to the selection.
+    pub(crate) wheel: Option<(usize, usize)>,
     pub(crate) files_task: Option<gpui::Task<()>>,
 }
 
@@ -114,6 +119,7 @@ impl PaletteState {
             original_theme: 0,
             files: Vec::new(),
             files_loading: false,
+            wheel: None,
             files_task: None,
         }
     }
@@ -865,6 +871,7 @@ impl EditorView {
         self.palette.target = target;
         self.palette.original_theme = self.theme_index;
         // Theme list is in load order while the query is empty, so the index is the position.
+        self.palette.wheel = None;
         self.palette.selected = if mode == PaletteMode::Themes { self.theme_index } else { self.palette_first_choice() };
         self.set_focus_inner(Focus::Palette);
         cx.notify();
@@ -1806,7 +1813,10 @@ impl EditorView {
         let items = self.palette_items();
         let selected = self.palette.selected.min(items.len().saturating_sub(1));
         let command_row_icon = self.palette.mode == PaletteMode::Commands;
-        let first = (selected + 1).saturating_sub(VISIBLE_ROWS);
+        let first = match self.palette.wheel {
+            Some((offset, for_selected)) if for_selected == selected => offset.min(items.len().saturating_sub(VISIBLE_ROWS)),
+            _ => (selected + 1).saturating_sub(VISIBLE_ROWS),
+        };
         let theme = &self.theme;
         let (hover, text, dim) = (theme.quick_input.focus_background, theme.quick_input.foreground, theme.gutter_text);
 
@@ -1930,6 +1940,22 @@ impl EditorView {
             .child(
                 div()
                     .id("palette")
+                    .on_scroll_wheel(cx.listener(move |this, event: &gpui::ScrollWheelEvent, _w, cx| {
+                        cx.stop_propagation();
+                        let total = this.palette_items().len();
+                        let selected = this.palette.selected.min(total.saturating_sub(1));
+                        let shown = match this.palette.wheel {
+                            Some((offset, for_selected)) if for_selected == selected => offset,
+                            _ => (selected + 1).saturating_sub(VISIBLE_ROWS),
+                        };
+                        // Rows are one line tall: the wheel moves by whole rows.
+                        let rows = (-f32::from(event.delta.pixel_delta(px(ROW_PITCH)).y) / ROW_PITCH).round() as isize;
+                        let rows = if rows == 0 { if event.delta.pixel_delta(px(ROW_PITCH)).y < px(0.) { 1 } else { -1 } } else { rows };
+                        let max = total.saturating_sub(VISIBLE_ROWS) as isize;
+                        let next = (shown as isize + rows).clamp(0, max.max(0)) as usize;
+                        this.palette.wheel = Some((next, selected));
+                        cx.notify();
+                    }))
                     .w(px(PALETTE_WIDTH))
                     .mt(px(6.))
                     .p(px(4.))

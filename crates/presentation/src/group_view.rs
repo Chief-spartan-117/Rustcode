@@ -421,12 +421,13 @@ impl EditorView {
         let indent = self.editor_for(&document.title).wrapping_indent.unwrap_or(true);
         let mut slot = group.wrap.borrow_mut();
         if let Some(map) = slot.as_ref() {
-            if map.cols() == cols && map.revision() == revision && map.folded() == folded && map.indents_wrapped_rows() == indent {
+            if group.wrap_doc.get() == Some(doc) && map.cols() == cols && map.revision() == revision && map.folded() == folded && map.indents_wrapped_rows() == indent {
                 return Some(map.clone());
             }
         }
         let map = Rc::new(rustcode_domain::WrapMap::build_with(document.editor.buffer(), cols, revision, folded, indent));
         *slot = Some(map.clone());
+        group.wrap_doc.set(Some(doc));
         Some(map)
     }
 

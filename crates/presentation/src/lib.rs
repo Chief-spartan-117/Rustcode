@@ -4,6 +4,7 @@ mod actions;
 mod brackets;
 mod breadcrumbs;
 mod color_picker;
+mod extensions_view;
 mod minimap;
 mod debug_panel;
 mod debug_view;

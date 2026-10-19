@@ -376,7 +376,7 @@ impl EditorView {
         match self.shell.side_view {
             crate::shell::SideView::Explorer => Some("explorer".to_owned()),
             crate::shell::SideView::SourceControl => Some("scm".to_owned()),
-            crate::shell::SideView::Search => None,
+            crate::shell::SideView::Search | crate::shell::SideView::Extensions => None,
             crate::shell::SideView::Extension(index) => self.ext_ui.contributed.containers.get(index as usize).map(|c| c.id.clone()),
         }
     }

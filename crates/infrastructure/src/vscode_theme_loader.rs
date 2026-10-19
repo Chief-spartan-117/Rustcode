@@ -98,6 +98,23 @@ impl VsCodeThemeLoader {
         Ok(build_theme(merged))
     }
 
+    /// A theme from the text of a self-contained theme file (no `include`), such as the ones
+    /// bundled with the program.
+    pub fn parse_text(&self, text: &str) -> Result<ColorTheme, ThemeLoadError> {
+        let invalid = |reason: String| ThemeLoadError::Invalid { path: "bundled theme".to_owned(), reason };
+        let raw: RawTheme = json5::from_str(text).map_err(|err| invalid(err.to_string()))?;
+        let mut merged = MergedTheme::default();
+        merged.name = raw.name;
+        merged.kind = raw.kind;
+        merged.colors.extend(raw.colors);
+        match raw.token_colors {
+            RawTokenColors::Rules(rules) => merged.rules.extend(rules),
+            RawTokenColors::External(_) => return Err(invalid("bundled themes have their rules inline".to_owned())),
+        }
+        merged.semantic.extend(raw.semantic_token_colors);
+        Ok(build_theme(merged))
+    }
+
     fn load_merged(&self, path: &Path, depth: usize) -> Result<MergedTheme, ThemeLoadError> {
         let invalid = |reason: String| ThemeLoadError::Invalid {
             path: path.display().to_string(),
@@ -518,6 +535,18 @@ mod tests {
             VsCodeThemeLoader.parse_file(Path::new("/nonexistent/theme.json")),
             Err(ThemeLoadError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn the_themes_that_come_with_the_program_load() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/rustcode/assets/themes");
+        for (file, name, background) in [("one_dark.json", "One Dark", 0x282c34), ("astro.json", "Astro", 0x0d0b14)] {
+            let text = std::fs::read_to_string(dir.join(file)).unwrap();
+            let theme = VsCodeThemeLoader.parse_text(&text).unwrap();
+            assert_eq!(theme.name, name);
+            assert_eq!(theme.colors.background, Color::rgb(background));
+            assert!(theme.resolve_style(&["source.rust", "keyword.control.rust"]).foreground.is_some());
+        }
     }
 
     #[test]

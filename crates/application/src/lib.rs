@@ -78,7 +78,7 @@ pub use extension_services::{
     TerminalRequest, TreeNode, ViewContainer,
 };
 pub use extension_host::{SaveReason, TreeUiEvent, 
-    CollectionDiagnostics, DecoratedRange, DecorationEdge, DecorationStyle, ExtensionCommand, ExtensionHost, HostChange, HostDocument, HostEditor, HostEvent, HostFileEdit, HostPoint, HostSelection, InstalledPackage, LanguageEvents, MessageLevel, NoExtensions, PickItem, PromptAnswer, PromptKind,
+    CollectionDiagnostics, DecoratedRange, DecorationEdge, DecorationStyle, ExtensionCommand, ExtensionHost, HostChange, HostDocument, HostEditor, HostEvent, HostFileEdit, HostPoint, HostSelection, InstalledPackage, MarketExtension, LanguageEvents, MessageLevel, NoExtensions, PickItem, PromptAnswer, PromptKind,
     SettingTarget, WorkbenchUpdate, untitled_path, untitled_title,
 };
 pub use editorconfig::{editorconfig_for, EditorConfig};

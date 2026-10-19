@@ -182,6 +182,18 @@ fn set_dock_icon() {
 #[cfg(not(target_os = "macos"))]
 fn set_dock_icon() {}
 
+/// The themes the program starts with: the one asked for, then the ones that come with it.
+fn bundled_themes(first: ColorTheme) -> Vec<ColorTheme> {
+    let mut themes = vec![first, ColorTheme::light_plus()];
+    for text in [include_str!("../assets/themes/one_dark.json"), include_str!("../assets/themes/astro.json")] {
+        match VsCodeThemeLoader.parse_text(text) {
+            Ok(theme) => themes.push(theme),
+            Err(err) => eprintln!("bundled theme: {err}"),
+        }
+    }
+    themes
+}
+
 fn load_theme(path: Option<&PathBuf>) -> ColorTheme {
     let Some(path) = path else {
         return ColorTheme::dark_plus();
@@ -442,7 +454,7 @@ fn main() {
                             EditorView::new(
                                 document,
                                 services,
-                                vec![theme, ColorTheme::light_plus()],
+                                bundled_themes(theme),
                                 cx,
                             )
                         });

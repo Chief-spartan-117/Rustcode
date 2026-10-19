@@ -133,8 +133,10 @@ impl EditorView {
             SideView::Search => self.focus_search(cx),
             SideView::SourceControl => {
                 self.refresh_git(cx);
+                self.load_graph(cx);
                 self.load_visible_trees(cx);
             }
+            SideView::Extensions => self.extensions_opened(cx),
             SideView::Explorer => self.load_visible_trees(cx),
             SideView::Extension(_) => self.load_visible_trees(cx),
         }
@@ -325,6 +327,14 @@ impl EditorView {
             self.search.cursor = None;
             cx.notify();
         }
+    }
+
+    /// Empty the list of results (the box keeps what was typed).
+    pub(crate) fn clear_search_results(&mut self, cx: &mut Context<Self>) {
+        self.search.results = Default::default();
+        self.search.error = None;
+        self.search.cursor = None;
+        cx.notify();
     }
 
     /// Take one match out of the results. A file left with no matches goes too.
@@ -619,7 +629,23 @@ impl EditorView {
         };
 
         self.side_panel_frame("search-panel", cx)
-            .child(self.side_panel_title("SEARCH"))
+            .child(
+                div()
+                    .h(px(32.))
+                    .flex_none()
+                    .px(px(12.))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(2.))
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.side_bar.title_foreground)
+                    .child("Search")
+                    .child(div().flex_1())
+                    .child(self.icon_button("search-refresh", "refresh", false, cx, |this, cx| this.search_now(cx)))
+                    .child(self.icon_button("search-clear", "close", false, cx, |this, cx| this.clear_search_results(cx))),
+            )
             .child(
                 div()
                     .flex_none()
@@ -628,16 +654,26 @@ impl EditorView {
                     .flex()
                     .flex_col()
                     .gap(px(6.))
-                    .child(self.input(
-                        "search-input",
-                        &self.search.query,
-                        self.focus == Focus::Search,
-                        Focus::Search,
-                        3,
-                        input_width,
-                        window,
-                        cx,
-                    ))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(2.))
+                            .child(self.input(
+                                "search-input",
+                                &self.search.query,
+                                self.focus == Focus::Search,
+                                Focus::Search,
+                                3,
+                                input_width - 84.0,
+                                window,
+                                cx,
+                            ))
+                            .child(toggle("search-case", "Aa", options.case_sensitive, cx, |o| o.case_sensitive = !o.case_sensitive))
+                            .child(toggle("search-word", "ab", options.whole_word, cx, |o| o.whole_word = !o.whole_word))
+                            .child(toggle("search-regex", ".*", options.regex, cx, |o| o.regex = !o.regex)),
+                    )
                     .child(
                         div()
                             .flex()
@@ -662,16 +698,7 @@ impl EditorView {
                                 |this, cx| this.replace_in_files(ReplaceTarget::All, cx),
                             )),
                     )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap(px(4.))
-                            .child(toggle("search-case", "Aa", options.case_sensitive, cx, |o| o.case_sensitive = !o.case_sensitive))
-                            .child(toggle("search-word", "ab", options.whole_word, cx, |o| o.whole_word = !o.whole_word))
-                            .child(toggle("search-regex", ".*", options.regex, cx, |o| o.regex = !o.regex)),
-                    )
-                    .child(div().text_size(px(11.)).text_color(dim).child("files to include"))
+                    .child(div().text_size(px(12.)).text_color(dim).child("files to include"))
                     .child(self.input(
                         "search-include-input",
                         &self.search.include,
@@ -682,7 +709,7 @@ impl EditorView {
                         window,
                         cx,
                     ))
-                    .child(div().text_size(px(11.)).text_color(dim).child("files to exclude"))
+                    .child(div().text_size(px(12.)).text_color(dim).child("files to exclude"))
                     .child(self.input(
                         "search-exclude-input",
                         &self.search.exclude,

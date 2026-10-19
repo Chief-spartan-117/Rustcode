@@ -1057,15 +1057,35 @@ impl ExtensionHost for NodeExtensionHost {
             .filter(|e| e.path().is_dir() && !e.file_name().to_string_lossy().starts_with('.'))
             .filter_map(|entry| {
                 let manifest: Value = std::fs::read_to_string(entry.path().join("package.json")).ok().and_then(|t| json5::from_str(&t).ok())?;
+                let name = manifest["name"].as_str()?;
+                let publisher = manifest["publisher"].as_str().unwrap_or("local");
+                // `%key%` names are placeholders that the extension's own files fill in.
+                let plain = |value: Option<&str>| value.filter(|v| !v.starts_with('%')).map(str::to_owned);
                 Some(rustcode_application::InstalledPackage {
                     folder: entry.file_name().to_string_lossy().into_owned(),
-                    id: format!("{}.{}", manifest["publisher"].as_str().unwrap_or("local"), manifest["name"].as_str()?),
+                    id: format!("{publisher}.{name}"),
                     version: manifest["version"].as_str().unwrap_or("").to_owned(),
+                    name: plain(manifest["displayName"].as_str()).unwrap_or_else(|| name.to_owned()),
+                    description: plain(manifest["description"].as_str()).unwrap_or_default(),
+                    publisher: publisher.to_owned(),
+                    icon: manifest["icon"].as_str().map(|icon| entry.path().join(icon)).filter(|p| p.is_file()),
                 })
             })
             .collect();
         found.sort_by(|a, b| a.id.cmp(&b.id).then(a.version.cmp(&b.version)));
         found
+    }
+
+    fn search_marketplace(&self, query: &str) -> Result<Vec<rustcode_application::MarketExtension>, String> {
+        crate::marketplace::search(query)
+    }
+
+    fn install_from_marketplace(&self, extension: &rustcode_application::MarketExtension) -> Result<String, String> {
+        let archive = std::env::temp_dir().join(format!("{}-{}.vsix", extension.id, extension.version));
+        crate::marketplace::download(&extension.download_url, &archive)?;
+        let result = self.install_package(&archive);
+        let _ = std::fs::remove_file(&archive);
+        result
     }
 
     fn uninstall_package(&self, folder: &str) -> Result<String, String> {

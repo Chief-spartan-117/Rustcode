@@ -293,7 +293,13 @@ impl EditorView {
         let active_path = self.document.path.as_deref();
         let mut sections: Vec<gpui::AnyElement> = Vec::new();
         let mut row_id = 0usize;
+        // Each folder of the window is a project of its own: the explorer shows the active one.
+        let shown = self.active_root_index();
+        let isolate = self.shell.explorers.len() > 1;
         for (tree_index, tree) in self.shell.explorers.iter().enumerate() {
+            if isolate && tree_index != shown {
+                continue;
+            }
             let header = div()
                 .id(("explorer-root", tree_index))
                 .h(px(ROW_HEIGHT))

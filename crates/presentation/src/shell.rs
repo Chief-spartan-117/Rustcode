@@ -40,6 +40,8 @@ pub(crate) enum SideView {
     Explorer,
     Search,
     SourceControl,
+    /// Installed extensions, and the marketplace.
+    Extensions,
     /// The container `n` an extension added to the activity bar.
     Extension(u16),
 }
@@ -236,7 +238,7 @@ fn count_badge(count: usize, background: gpui::Rgba, foreground: gpui::Rgba, rig
 }
 
 /// The same count, sitting in a row of text.
-fn count_badge_inline(count: usize, background: gpui::Rgba, foreground: gpui::Rgba) -> gpui::Div {
+pub(crate) fn count_badge_inline(count: usize, background: gpui::Rgba, foreground: gpui::Rgba) -> gpui::Div {
     div()
         .flex_none()
         .min_w(px(16.))
@@ -456,6 +458,20 @@ impl EditorView {
                             }),
                         ),
                     )
+                    .child(
+                        button(
+                            "activity-extensions",
+                            "extensions",
+                            self.shell.sidebar_visible && self.shell.side_view == SideView::Extensions,
+                        )
+                        .cursor_pointer()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                                this.show_side_view(SideView::Extensions, cx)
+                            }),
+                        ),
+                    )
                     // The containers extensions added.
                     .children((0..self.ext_ui.contributed.containers.len() as u16).map(|index| self.render_ext_activity_button(index, cx))),
             )
@@ -498,6 +514,7 @@ impl EditorView {
             SideView::Explorer => self.render_sidebar(cx).into_any_element(),
             SideView::Search => self.render_search_panel(window, cx).into_any_element(),
             SideView::SourceControl => self.render_git_panel(window, cx).into_any_element(),
+            SideView::Extensions => self.render_extensions_panel(window, cx).into_any_element(),
             SideView::Extension(index) => self.render_ext_container(index, cx),
         }
     }

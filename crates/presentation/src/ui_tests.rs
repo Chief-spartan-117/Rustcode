@@ -4776,8 +4776,8 @@ fn an_extension_can_be_uninstalled_from_the_palette(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, "doc");
     let host = with_extensions(&view, cx);
     *host.packages.lock().unwrap() = vec![
-        rustcode_application::InstalledPackage { folder: "acme.nice-1.0.0".to_owned(), id: "acme.nice".to_owned(), version: "1.0.0".to_owned() },
-        rustcode_application::InstalledPackage { folder: "broken-1".to_owned(), id: "acme.broken".to_owned(), version: "1".to_owned() },
+        rustcode_application::InstalledPackage { folder: "acme.nice-1.0.0".to_owned(), id: "acme.nice".to_owned(), version: "1.0.0".to_owned(), name: "Nice".to_owned(), description: String::new(), publisher: "acme".to_owned(), icon: None },
+        rustcode_application::InstalledPackage { folder: "broken-1".to_owned(), id: "acme.broken".to_owned(), version: "1".to_owned(), name: "Broken".to_owned(), description: String::new(), publisher: "acme".to_owned(), icon: None },
     ];
     // The extension's theme is in use when it goes.
     let mut nice = nice_contributions();
@@ -11179,4 +11179,15 @@ fn output_lines_can_be_selected_and_copied(cx: &mut TestAppContext) {
     assert_eq!(view.read_with(cx, |v, _| v.text()), document);
     view.update(cx, |v, cx| v.clear_output(cx));
     assert!(view.read_with(cx, |v, _| v.shell.output.is_empty()));
+}
+
+#[gpui::test]
+fn the_rows_of_one_document_are_not_reused_for_another_in_the_same_group(cx: &mut TestAppContext) {
+    let fs = TestFs::with(&[("/work/long.txt", "a\nb\nc\nd\ne\n")]);
+    let (view, cx, _) = open_with_fs(cx, "one line", fs);
+    cx.run_until_parked();
+    assert_eq!(view.read_with(cx, |v, _| v.group_wrap(0).map(|w| w.rows())), Some(1));
+    view.update(cx, |v, cx| v.open_path(Path::new("/work/long.txt"), cx));
+    cx.run_until_parked();
+    assert_eq!(view.read_with(cx, |v, _| v.group_wrap(0).map(|w| w.rows())), Some(6));
 }

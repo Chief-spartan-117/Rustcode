@@ -86,9 +86,20 @@ impl EditorView {
     /// Show a folder of this window: the explorer opens at it.
     pub(crate) fn switch_to_root(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(root) = self.shell.explorers.get(index).map(|t| t.root().to_path_buf()) else { return };
+        // The project that is left remembers its file; the one that is entered gets its file back.
+        let from = self.active_root_index();
+        if let (Some(old), Some(file)) = (self.shell.explorers.get(from).map(|t| t.root().to_path_buf()), self.document.path.clone()) {
+            if file.starts_with(&old) {
+                self.project_files.insert(old, file);
+            }
+        }
         self.show_side_view(crate::shell::SideView::Explorer, cx);
+        self.shell.cursor = Some(root.clone());
+        match self.project_files.get(&root).filter(|file| file.is_file()).cloned() {
+            Some(file) => self.open_path(&file, cx),
+            None => {}
+        }
         self.switched_root = Some((index, self.document.id));
-        self.shell.cursor = Some(root);
         cx.notify();
     }
 

@@ -5,6 +5,7 @@ mod contributed_loader;
 mod contributions;
 mod dap;
 mod ext_language;
+mod marketplace;
 mod ext_services;
 mod extension_host;
 mod file_lister;

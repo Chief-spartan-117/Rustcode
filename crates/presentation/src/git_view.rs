@@ -65,6 +65,8 @@ pub(crate) struct GitState {
     pub graph_error: Option<String>,
     pub graph_loading: bool,
     pub graph_scroll: ScrollHandle,
+    /// The menu under the arrow of the Commit button is open.
+    pub commit_menu: bool,
     pub(crate) graph_task: Option<Task<()>>,
 }
 
@@ -104,6 +106,7 @@ impl GitState {
             graph_error: None,
             graph_loading: false,
             graph_scroll: ScrollHandle::new(),
+            commit_menu: false,
             graph_task: None,
         }
     }
@@ -436,7 +439,19 @@ impl EditorView {
         let theme = &self.theme;
         let (hover, text, dim) = (theme.lists.hover, theme.side_bar.foreground, theme.gutter_text);
         let input_width = self.shell.sidebar_width - 24.0;
-        let frame = self.side_panel_frame("git-panel", cx).child(self.side_panel_title("SOURCE CONTROL"));
+        let title = div()
+            .h(px(32.))
+            .flex_none()
+            .px(px(12.))
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .text_size(px(13.))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .text_color(theme.side_bar.title_foreground)
+            .child("Source Control");
+        let frame = self.side_panel_frame("git-panel", cx).child(title);
 
         let Some(status) = self.git_state.status.as_ref() else {
             let message = self.git_state.error.clone().unwrap_or_else(|| "Loading...".to_owned());
@@ -465,9 +480,19 @@ impl EditorView {
                     .flex_row()
                     .items_center()
                     .justify_between()
-                    .text_size(px(11.))
-                    .text_color(dim)
-                    .child(format!("{} ({})", title.to_uppercase(), changes.len()))
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(text)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(6.))
+                            .child(crate::icons::icon("chevron-down", 12., dim))
+                            .child(title),
+                    )
+                    .child(crate::shell::count_badge_inline(changes.len(), theme.badge.background, theme.badge.foreground))
                     .child(self.icon_button(
                         if is_staged { "git-unstage-all" } else { "git-stage-all" },
                         if is_staged { "minus" } else { "plus" },
@@ -494,6 +519,7 @@ impl EditorView {
                         change.path.parent()?.strip_prefix(self.shell.explorers[i].root()).ok().map(|p| p.display().to_string())
                     })
                     .unwrap_or_default();
+                let problems_in = self.problems.items.iter().filter(|d| d.path == change.path).count();
                 let letter_color = match change.kind {
                     rustcode_application::ChangeKind::Deleted => theme.git.deleted,
                     rustcode_application::ChangeKind::Conflicted => theme.git.conflicting,
@@ -520,9 +546,12 @@ impl EditorView {
                             MouseButton::Left,
                             cx.listener(move |this, _: &MouseDownEvent, _w, cx| this.open_path(&path, cx)),
                         )
+                        .group(format!("git-row-{is_staged}-{index}"))
+                        .child(self.entry_icon(&name, false, false, dim))
                         .child(name)
-                        .child(div().text_color(dim).text_size(px(12.)).child(dir))
+                        .child(div().min_w_0().overflow_hidden().text_color(dim).text_size(px(12.)).child(dir))
                         .child(div().flex_1())
+                        .child(div().flex().flex_row().items_center().opacity(0.).group_hover(format!("git-row-{is_staged}-{index}"), |style| style.opacity(1.))
                         .child(self.icon_button("git-diff-side", "diff-split", false, cx, {
                             let side_path = change.path.clone();
                             move |this, cx| this.git_open_side_by_side(side_path.clone(), cx)
@@ -564,7 +593,22 @@ impl EditorView {
                                 }
                             },
                         ))
-                        .child(div().w(px(14.)).text_color(letter_color).child(change.kind.letter().to_string()))
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .flex()
+                                .flex_row()
+                                .gap(px(4.))
+                                .text_size(px(12.))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(letter_color)
+                                // Problems in the file, then what happened to it: `9+, M`.
+                                .children((problems_in > 0).then(|| {
+                                    div().text_color(theme.git.deleted).child(format!("{},", if problems_in > 9 { "9+".to_owned() } else { problems_in.to_string() }))
+                                }))
+                                .child(change.kind.letter().to_string()),
+                        )
                         .into_any_element(),
                 );
             }
@@ -592,38 +636,88 @@ impl EditorView {
                         window,
                         cx,
                     ))
-                    .child(
-                        self.button(
-                            "git-commit",
-                            if self.git_state.busy { "Working..." } else { "Commit" },
-                            can_commit,
-                            cx,
-                            |this, cx| this.git_commit(cx),
-                        )
-                        // The main action of the view takes the button colors of the theme.
-                        .when(can_commit, |b| b.bg(theme.button.background).text_color(theme.button.foreground)),
-                    )
-                    .child(self.button(
-                        "git-amend",
-                        if self.git_state.amend { "Amend last commit: on" } else { "Amend last commit: off" },
-                        self.git_state.amend,
-                        cx,
-                        |this, cx| {
-                            this.git_state.amend = !this.git_state.amend;
-                            cx.notify();
-                        },
-                    ))
-                    .child(self.button(
-                        "git-signing",
-                        match self.git_state.signing {
-                            rustcode_application::Signing::Config => "Sign commits: per git config",
-                            rustcode_application::Signing::Always => "Sign commits: always",
-                            rustcode_application::Signing::Never => "Sign commits: never",
-                        },
-                        self.git_state.signing != rustcode_application::Signing::Config,
-                        cx,
-                        |this, cx| this.cycle_signing(cx),
-                    ))
+                    .child({
+                        // One wide button: the check and "Commit", and an arrow that opens the options.
+                        let primary = theme.button.background;
+                        let on_primary = theme.button.foreground;
+                        let menu_open = self.git_state.commit_menu;
+                        div()
+                            .flex()
+                            .flex_row()
+                            .h(px(30.))
+                            .rounded(px(4.))
+                            .overflow_hidden()
+                            .bg(if can_commit { primary } else { theme.widget_background })
+                            .text_color(if can_commit { on_primary } else { dim })
+                            .child(
+                                div()
+                                    .id("git-commit")
+                                    .flex_1()
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .justify_center()
+                                    .gap(px(6.))
+                                    .cursor_pointer()
+                                    .hover(|style| style.opacity(0.9))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                                            cx.stop_propagation();
+                                            this.git_commit(cx)
+                                        }),
+                                    )
+                                    .child(crate::icons::icon("check", 14., if can_commit { on_primary } else { dim }))
+                                    .child(if self.git_state.busy { "Working..." } else if self.git_state.amend { "Amend" } else { "Commit" }),
+                            )
+                            .child(div().w(px(1.)).my(px(5.)).bg(gpui::Rgba { a: 0.35, ..on_primary }))
+                            .child(
+                                div()
+                                    .id("git-commit-menu")
+                                    .w(px(30.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(|style| style.opacity(0.9))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                                            cx.stop_propagation();
+                                            this.git_state.commit_menu = !this.git_state.commit_menu;
+                                            cx.notify();
+                                        }),
+                                    )
+                                    .child(crate::icons::icon(if menu_open { "chevron-up" } else { "chevron-down" }, 14., if can_commit { on_primary } else { dim })),
+                            )
+                    })
+                    .children(self.git_state.commit_menu.then(|| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
+                            .child(self.button(
+                                "git-amend",
+                                if self.git_state.amend { "Amend last commit: on" } else { "Amend last commit: off" },
+                                self.git_state.amend,
+                                cx,
+                                |this, cx| {
+                                    this.git_state.amend = !this.git_state.amend;
+                                    cx.notify();
+                                },
+                            ))
+                            .child(self.button(
+                                "git-signing",
+                                match self.git_state.signing {
+                                    rustcode_application::Signing::Config => "Sign commits: per git config",
+                                    rustcode_application::Signing::Always => "Sign commits: always",
+                                    rustcode_application::Signing::Never => "Sign commits: never",
+                                },
+                                self.git_state.signing != rustcode_application::Signing::Config,
+                                cx,
+                                |this, cx| this.cycle_signing(cx),
+                            ))
+                    }))
                     .children(self.git_state.operation.clone().map(|operation| {
                         let rebase = operation == "rebase";
                         let pick = operation == "cherry-pick";
@@ -664,27 +758,6 @@ impl EditorView {
                                     })),
                             )
                     }))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(4.))
-                            .child(self.icon_button("git-fetch", "refresh", false, cx, |this, cx| {
-                                this.git_sync(rustcode_application::SyncAction::Fetch, cx)
-                            }))
-                            .child(self.icon_button("git-pull", "arrow-down", false, cx, |this, cx| {
-                                this.git_sync(rustcode_application::SyncAction::Pull, cx)
-                            }))
-                            .child(self.icon_button("git-push", "arrow-up", false, cx, |this, cx| {
-                                this.git_sync(rustcode_application::SyncAction::Push, cx)
-                            }))
-                            .child(div().text_color(dim).text_size(px(12.)).child(match self.git_state.status.as_ref() {
-                                Some(s) if s.has_upstream => format!("{} ahead, {} behind", s.ahead, s.behind),
-                                Some(_) => "no upstream; push sets one".to_owned(),
-                                None => String::new(),
-                            })),
-                    ),
             )
             .child(self.scroll_area(
                 3,
@@ -702,5 +775,54 @@ impl EditorView {
                     .children(self.render_ext_views("scm", cx)),
                 cx,
             ))
+            .child(
+                // The graph of commits, with fetch, pull and push in its header.
+                div()
+                    .flex_none()
+                    .h(px(240.))
+                    .flex()
+                    .flex_col()
+                    .border_t_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .h(px(ROW_HEIGHT + 4.))
+                            .flex_none()
+                            .px(px(12.))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_size(px(13.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(text)
+                            .child(crate::icons::icon("chevron-down", 12., dim))
+                            .child("Graph")
+                            .child(div().flex_1())
+                            .child(self.icon_button("git-fetch", "refresh", false, cx, |this, cx| {
+                                this.git_sync(rustcode_application::SyncAction::Fetch, cx)
+                            }))
+                            .child(self.icon_button("git-pull", "arrow-down", false, cx, |this, cx| {
+                                this.git_sync(rustcode_application::SyncAction::Pull, cx)
+                            }))
+                            .child(self.icon_button("git-push", "arrow-up", false, cx, |this, cx| {
+                                this.git_sync(rustcode_application::SyncAction::Push, cx)
+                            })),
+                    )
+                    .child(
+                        div()
+                            .px(px(12.))
+                            .pb(px(2.))
+                            .flex_none()
+                            .text_size(px(11.))
+                            .text_color(dim)
+                            .child(match self.git_state.status.as_ref() {
+                                Some(s) if s.has_upstream => format!("{} ahead, {} behind", s.ahead, s.behind),
+                                Some(_) => "no upstream; push sets one".to_owned(),
+                                None => String::new(),
+                            }),
+                    )
+                    .child(self.render_graph(cx)),
+            )
     }
 }

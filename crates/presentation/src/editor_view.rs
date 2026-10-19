@@ -48,6 +48,8 @@ pub(crate) enum Focus {
     SearchReplace,
     SearchInclude,
     SearchExclude,
+    /// The search box of the extensions view.
+    ExtensionsSearch,
     Commit,
     Terminal,
     /// The lines of the output panel, to select and copy.
@@ -187,7 +189,7 @@ pub struct EditorView {
     pub(crate) shell: Shell,
     pub(crate) watch_task: Option<Task<()>>,
     /// Bounds of the find / replace inputs, written during paint.
-    pub(crate) input_bounds: [Rc<Cell<Bounds<Pixels>>>; 11],
+    pub(crate) input_bounds: [Rc<Cell<Bounds<Pixels>>>; 12],
     /// Where the project chip of the title bar is, written during paint.
     pub(crate) chip_bounds: Rc<Cell<Bounds<Pixels>>>,
     pub(crate) git_state: crate::git_view::GitState,
@@ -256,6 +258,9 @@ pub struct EditorView {
     pub(crate) ext_dialog: Option<crate::ext_prompts::ExtDialog>,
     /// A folder waiting for the answer to "this window or another one?".
     pub(crate) open_choice: Option<PathBuf>,
+    pub(crate) extensions: crate::extensions_view::ExtensionsState,
+    /// The file that was open in each project of the window when it was left, by project folder.
+    pub(crate) project_files: std::collections::HashMap<PathBuf, PathBuf>,
     /// The folder of this window the user switched to, and the file that was open then: the
     /// chip names it until another file is opened.
     pub(crate) switched_root: Option<(usize, rustcode_domain::DocumentId)>,
@@ -311,6 +316,7 @@ impl Focus {
             Focus::SettingsSearch => Some("Search settings"),
             Focus::ShortcutsSearch => Some("Type to search in keybindings"),
             Focus::SearchReplace => Some("Replace"),
+            Focus::ExtensionsSearch => Some("Search Extensions in Marketplace"),
             Focus::SearchInclude => Some("e.g. *.rs, src/**"),
             Focus::SearchExclude => Some("e.g. target/**"),
             _ => None,
@@ -441,6 +447,7 @@ impl EditorView {
                 Rc::new(Cell::new(Bounds::default())),
                 Rc::new(Cell::new(Bounds::default())),
                 Rc::new(Cell::new(Bounds::default())),
+                Rc::new(Cell::new(Bounds::default())),
             ],
             chip_bounds: Rc::new(Cell::new(Bounds::default())),
             git_state: crate::git_view::GitState::new(),
@@ -484,6 +491,8 @@ impl EditorView {
             ext_prompt: None,
             ext_dialog: None,
             open_choice: None,
+            extensions: crate::extensions_view::ExtensionsState::new(),
+            project_files: Default::default(),
             switched_root: None,
             ext_progress: std::collections::HashMap::new(),
             ext_status_items: Vec::new(),
@@ -649,6 +658,11 @@ impl EditorView {
                 self.search_changed(cx);
                 cx.notify();
             }
+            Focus::ExtensionsSearch => {
+                f(&mut self.extensions.query);
+                self.extensions_query_changed(cx);
+                cx.notify();
+            }
             Focus::Commit => {
                 f(&mut self.git_state.message);
                 cx.notify();
@@ -745,6 +759,7 @@ impl EditorView {
             Focus::SearchReplace => &self.search.replace,
             Focus::SearchInclude => &self.search.include,
             Focus::SearchExclude => &self.search.exclude,
+            Focus::ExtensionsSearch => &self.extensions.query,
             Focus::Commit => &self.git_state.message,
             Focus::Terminal | Focus::Output => &self.document.editor,
             Focus::Cell => self.cell_editor().unwrap_or(&self.document.editor),
@@ -764,6 +779,7 @@ impl EditorView {
             Focus::SearchReplace => &mut self.search.replace,
             Focus::SearchInclude => &mut self.search.include,
             Focus::SearchExclude => &mut self.search.exclude,
+            Focus::ExtensionsSearch => &mut self.extensions.query,
             Focus::Commit => &mut self.git_state.message,
             Focus::Terminal | Focus::Output => &mut self.document.editor,
             Focus::SettingsSearch => &mut self.app_pages.settings.search,
@@ -893,6 +909,7 @@ impl EditorView {
                 | Focus::SearchReplace
                 | Focus::SearchInclude
                 | Focus::SearchExclude
+                | Focus::ExtensionsSearch
                 | Focus::Commit
                 | Focus::Terminal
                 | Focus::Output
@@ -938,6 +955,7 @@ impl EditorView {
             Focus::Search => self.search_accept(cx),
             Focus::SearchReplace => self.search_replace_enter(cx),
             Focus::SearchInclude | Focus::SearchExclude => self.search_now(cx),
+            Focus::ExtensionsSearch => self.extensions_search_now(cx),
             Focus::Commit => self.git_commit(cx),
             Focus::Terminal | Focus::Output => {}
             Focus::Cell => self.cell_newline(cx),
@@ -981,7 +999,7 @@ impl EditorView {
                 self.search_next_input(cx)
             }
             Focus::Cell => self.edit_cell(cx, |e| e.insert_tab()),
-            Focus::Commit | Focus::Terminal | Focus::Output | Focus::SettingsSearch | Focus::SettingsValue | Focus::ShortcutsSearch => {}
+            Focus::ExtensionsSearch | Focus::Commit | Focus::Terminal | Focus::Output | Focus::SettingsSearch | Focus::SettingsValue | Focus::ShortcutsSearch => {}
         }
     }
 
@@ -1278,6 +1296,7 @@ impl EditorView {
             Focus::SettingsSearch => 8,
             Focus::SettingsValue => 9,
             Focus::ShortcutsSearch => 10,
+            Focus::ExtensionsSearch => 11,
             Focus::Editor | Focus::Cell | Focus::Terminal | Focus::Output => return,
         };
         let bounds = self.input_bounds[slot].get();

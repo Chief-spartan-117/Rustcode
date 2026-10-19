@@ -32,6 +32,25 @@ pub struct InstalledPackage {
     /// `publisher.name`
     pub id: String,
     pub version: String,
+    /// What the manifest calls it (`displayName`, else `name`), its description and publisher.
+    pub name: String,
+    pub description: String,
+    pub publisher: String,
+    /// The icon file the manifest names, when there is one.
+    pub icon: Option<PathBuf>,
+}
+
+/// An extension the marketplace (Open VSX) offers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarketExtension {
+    /// `publisher.name`
+    pub id: String,
+    pub name: String,
+    pub publisher: String,
+    pub version: String,
+    pub description: String,
+    /// Where the `.vsix` package is.
+    pub download_url: String,
 }
 
 /// How extensions name a file that has no path yet: `untitled:Untitled-1`.
@@ -488,6 +507,17 @@ pub trait ExtensionHost: Send + Sync {
     /// The extensions that were installed here, which can be uninstalled.
     fn installed_packages(&self) -> Vec<InstalledPackage> {
         Vec::new()
+    }
+
+    /// Extensions of the marketplace that match `query`.
+    fn search_marketplace(&self, _query: &str) -> Result<Vec<MarketExtension>, String> {
+        Err("this build cannot reach the marketplace".to_owned())
+    }
+
+    /// Download the package of `extension` and unpack it where extensions are kept. Returns a
+    /// sentence about what was installed.
+    fn install_from_marketplace(&self, _extension: &MarketExtension) -> Result<String, String> {
+        Err("this build cannot reach the marketplace".to_owned())
     }
 
     /// Remove the installed extension kept in `folder`. Returns a sentence about it.

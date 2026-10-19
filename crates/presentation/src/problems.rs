@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use gpui::{div, prelude::*, px, Context, MouseButton, MouseDownEvent, Rgba, ScrollHandle, Task};
+use gpui::{div, prelude::*, px, uniform_list, Context, MouseButton, MouseDownEvent, Rgba, Task, UniformListScrollHandle};
 use rustcode_application::{count_by_severity, Diagnostic, Severity};
 
 use crate::editor_view::EditorView;
@@ -27,7 +27,7 @@ pub(crate) struct ProblemsState {
     pub error: Option<String>,
     /// Whether a check has ever finished, so an empty list means "none" and not "not run".
     pub checked: bool,
-    pub scroll: ScrollHandle,
+    pub scroll: UniformListScrollHandle,
     task: Option<Task<()>>,
 }
 
@@ -43,7 +43,7 @@ impl ProblemsState {
             rerun: false,
             error: None,
             checked: false,
-            scroll: ScrollHandle::new(),
+            scroll: UniformListScrollHandle::new(),
             task: None,
         }
     }
@@ -230,8 +230,6 @@ impl EditorView {
     }
 
     pub(crate) fn render_problems(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = &self.theme;
-        let (hover, text, dim) = (theme.lists.hover, theme.text, theme.gutter_text);
         let (errors, warnings) = self.problem_counts();
 
         let summary = if self.problems.running {
@@ -251,82 +249,108 @@ impl EditorView {
             )
         };
 
-        let mut rows: Vec<gpui::AnyElement> = vec![div()
-            .px(px(12.))
-            .h(px(ROW_HEIGHT))
-            .flex_none()
-            .flex()
-            .items_center()
-            .text_color(dim)
-            .child(summary)
-            .into_any_element()];
+        // One entry per row, so that only the rows in view are built: a project can have
+        // thousands of problems.
+        enum Entry {
+            Summary,
+            File(usize),
+            Problem(usize),
+        }
+        let mut entries = vec![Entry::Summary];
         let mut last_file: Option<&Path> = None;
         for (index, d) in self.problems.items.iter().enumerate() {
             if last_file != Some(d.path.as_path()) {
                 last_file = Some(d.path.as_path());
-                let name = d.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let dir = self
-                    .shell
-                    .explorer_for(&d.path)
-                    .and_then(|i| d.path.parent()?.strip_prefix(self.shell.explorers[i].root()).ok().map(|p| p.display().to_string()))
-                    .unwrap_or_default();
-                rows.push(
-                    div()
-                        .px(px(12.))
-                        .h(px(ROW_HEIGHT))
-                        .flex_none()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.))
-                        .text_color(text)
-                        .child(name)
-                        .child(div().text_color(dim).text_size(px(12.)).child(dir))
-                        .into_any_element(),
-                );
+                entries.push(Entry::File(index));
             }
-            rows.push(
-                div()
-                    .id(("problem", index))
-                    .h(px(ROW_HEIGHT))
-                    .flex_none()
-                    .pl(px(28.))
-                    .pr(px(12.))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.))
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_color(text)
-                    .hover(move |style| style.bg(hover))
-                    .cursor_pointer()
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, _: &MouseDownEvent, _w, cx| this.open_problem(index, cx)),
-                    )
-                    .child(div().w(px(8.)).h(px(8.)).flex_none().rounded(px(4.)).bg(severity_color(theme, d.severity)))
-                    .child(d.message.clone())
-                    .child(div().text_color(dim).text_size(px(12.)).child(d.source.clone()))
-                    .child(div().text_color(dim).text_size(px(12.)).child(format!("[{}, {}]", d.line + 1, d.column + 1)))
-                    .into_any_element(),
-            );
+            entries.push(Entry::Problem(index));
         }
-
-        self.scroll_area(
-            4,
-            &self.problems.scroll,
-            div()
-                .id("problems-list")
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .flex_col()
-                .overflow_y_scroll()
-                .track_scroll(&self.problems.scroll)
-                .children(rows),
-            cx,
+        let count = entries.len();
+        let list = uniform_list(
+            "problems-list",
+            count,
+            cx.processor(move |this: &mut Self, range: std::ops::Range<usize>, _window, cx| {
+                let theme = &this.theme;
+                let (hover, text, dim) = (theme.lists.hover, theme.text, theme.gutter_text);
+                range
+                    .map(|row| match &entries[row] {
+                        Entry::Summary => div()
+                            .px(px(12.))
+                            .h(px(ROW_HEIGHT))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .text_color(dim)
+                            .child(summary.clone())
+                            .into_any_element(),
+                        Entry::File(index) => {
+                            let d = &this.problems.items[*index];
+                            let name = d.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                            let dir = this
+                                .shell
+                                .explorer_for(&d.path)
+                                .and_then(|i| d.path.parent()?.strip_prefix(this.shell.explorers[i].root()).ok().map(|p| p.display().to_string()))
+                                .unwrap_or_default();
+                            div()
+                                .px(px(12.))
+                                .h(px(ROW_HEIGHT))
+                                .flex_none()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(6.))
+                                .text_color(text)
+                                .child(name)
+                                .child(div().text_color(dim).text_size(px(12.)).child(dir))
+                                .into_any_element()
+                        }
+                        Entry::Problem(index) => {
+                            let index = *index;
+                            let d = &this.problems.items[index];
+                            // A message can hold several lines (the problem, then how to fix it);
+                            // a row is one line tall, so they are joined.
+                            let message = d.message.split('\n').map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+                            div()
+                                .id(("problem", index))
+                                .h(px(ROW_HEIGHT))
+                                .flex_none()
+                                .pl(px(28.))
+                                .pr(px(12.))
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(8.))
+                                .whitespace_nowrap()
+                                .overflow_hidden()
+                                .text_color(text)
+                                .hover(move |style| style.bg(hover))
+                                .cursor_pointer()
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |this, _: &MouseDownEvent, _w, cx| this.open_problem(index, cx)),
+                                )
+                                .child(div().w(px(8.)).h(px(8.)).flex_none().rounded(px(4.)).bg(severity_color(theme, d.severity)))
+                                .child(div().min_w_0().overflow_hidden().text_ellipsis().child(message))
+                                .child(div().flex_none().text_color(dim).text_size(px(12.)).child(d.source.clone()))
+                                .child(div().flex_none().text_color(dim).text_size(px(12.)).child(format!("[{}, {}]", d.line + 1, d.column + 1)))
+                                .into_any_element()
+                        }
+                    })
+                    .collect()
+            }),
         )
+        .track_scroll(self.problems.scroll.clone())
+        .flex_1()
+        .min_h_0();
+        let handle = self.problems.scroll.0.borrow().base_handle.clone();
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(list)
+            .children(self.scrollbar(4, &handle, cx))
     }
 
     /// Open the Problems tab.

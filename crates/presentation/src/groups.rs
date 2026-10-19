@@ -115,6 +115,8 @@ pub(crate) struct Group {
     pub scroll_x_caret: Cell<usize>,
     /// Rows of the text when it wraps; `None` when lines run on.
     pub wrap: RefCell<Option<Rc<rustcode_domain::WrapMap>>>,
+    /// The document the rows in `wrap` were made for (revisions alone do not tell documents apart).
+    pub wrap_doc: Cell<Option<rustcode_domain::DocumentId>>,
     pub preview: PreviewMode,
     pub preview_scroll: ScrollHandle,
     /// What the editor and the preview showed when they were last brought together.
@@ -164,6 +166,7 @@ impl Group {
             scroll_x: Cell::new(0.0),
             scroll_x_caret: Cell::new(usize::MAX),
             wrap: RefCell::new(None),
+            wrap_doc: Cell::new(None),
             preview: PreviewMode::Off,
             preview_scroll: ScrollHandle::new(),
             preview_sync: Cell::new(PreviewSync::default()),
