@@ -129,7 +129,8 @@ mod system {
         #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("open").arg(url).spawn();
         #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        // Not `cmd /C start`: `&` and `|` in an address would run other commands.
+        let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
     }
 
     impl NativePage {
@@ -165,7 +166,7 @@ mod system {
                     }
                 })
                 .with_navigation_handler(move |url| {
-                    if url.starts_with(&origin) || url.starts_with(&resource_origin) || url == "about:blank" || site.as_ref().is_some_and(|site| url.starts_with(site.as_str())) {
+                    if url.starts_with(&origin) || url.starts_with(&resource_origin) || url == "about:blank" || site.is_some() && webview_page::origin_of(&url) == site {
                         return true;
                     }
                     if let Some(command) = webview_page::parse_command_link(&url) {

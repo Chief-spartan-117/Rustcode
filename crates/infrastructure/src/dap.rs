@@ -979,12 +979,7 @@ impl DebugAdapters for DapHost {
     fn install_javascript_debugger(&self) -> Result<String, String> {
         let home = js_debug_home().ok_or("no home folder")?;
         std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
-        let curl = find_program("curl").ok_or("cannot find curl")?;
-        let release = Command::new(&curl)
-            .args(["-sL", "-m", "30", "https://api.github.com/repos/microsoft/vscode-js-debug/releases/latest"])
-            .output()
-            .map_err(|e| e.to_string())?;
-        let release: Value = serde_json::from_slice(&release.stdout).map_err(|_| "cannot read the list of releases".to_owned())?;
+        let release = crate::server_install::latest_release("microsoft/vscode-js-debug")?;
         let url = release["assets"]
             .as_array()
             .and_then(|a| a.iter().find(|a| a["name"].as_str().is_some_and(|n| n.starts_with("js-debug-dap") && n.ends_with(".tar.gz"))))
@@ -992,9 +987,13 @@ impl DebugAdapters for DapHost {
             .ok_or("no js-debug-dap download found")?
             .to_owned();
         let archive = home.join("download.tar.gz");
-        let status = Command::new(&curl).args(["-sL", "-m", "300", "-o"]).arg(&archive).arg(&url).status().map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Err("the download failed".to_owned());
+        let archive_text = archive.to_string_lossy().into_owned();
+        crate::server_install::curl(&["--max-time", "300", "--output", &archive_text, &url])?;
+        if let Some(expected) = crate::server_install::release_file_digest(&release, &url) {
+            if crate::github_updates::sha256_of(&archive)? != expected {
+                let _ = std::fs::remove_file(&archive);
+                return Err("the download does not match its checksum".to_owned());
+            }
         }
         let status = Command::new("tar").arg("xzf").arg(&archive).arg("-C").arg(&home).status().map_err(|e| e.to_string())?;
         let _ = std::fs::remove_file(&archive);

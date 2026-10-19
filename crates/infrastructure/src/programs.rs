@@ -125,3 +125,33 @@ mod tests {
         }
     }
 }
+
+/// A folder only this user can read, for files that are run or hold secrets (`/tmp` is shared on
+/// Linux, so a predictable name there can be taken over by another user).
+pub(crate) fn private_dir() -> std::io::Result<PathBuf> {
+    let dir = dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("rustcode").join("run");
+    std::fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(dir)
+}
+
+/// Write `text` to `path` (replacing a file or link already there) so that only this user can
+/// read it, and, when `executable`, run it.
+pub(crate) fn write_private(path: &Path, text: &str, executable: bool) -> std::io::Result<()> {
+    use std::io::Write;
+    let _ = std::fs::remove_file(path);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(if executable { 0o700 } else { 0o600 });
+    }
+    #[cfg(not(unix))]
+    let _ = executable;
+    options.open(path)?.write_all(text.as_bytes())
+}
