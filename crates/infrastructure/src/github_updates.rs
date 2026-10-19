@@ -86,9 +86,11 @@ impl UpdateService for GithubUpdates {
             return Ok(None);
         };
         if let Some(url) = checksum_url {
-            // A checksum that cannot be read is not a reason to miss the update: the download
-            // is then unchecked, which the release chose by not offering one that works.
             release.sha256 = curl(&[&url]).ok().and_then(|bytes| checksum_from_file(&String::from_utf8_lossy(&bytes)));
+        }
+        // An update runs as this program: without a checksum to check it against, it is not offered.
+        if release.sha256.is_none() {
+            return Err(format!("release {} has no readable SHA-256 checksum for its download, so it is not offered", release.version));
         }
         Ok(Some(release))
     }
@@ -100,12 +102,11 @@ impl UpdateService for GithubUpdates {
         let package = folder.join(&release.asset_name);
         let package_text = package.to_string_lossy().into_owned();
         curl(&["--max-time", "900", "--output", &package_text, &release.asset_url])?;
-        if let Some(expected) = &release.sha256 {
-            let found = sha256_of(&package)?;
-            if &found != expected {
-                let _ = std::fs::remove_dir_all(&folder);
-                return Err(format!("the download does not match its checksum ({found} is not {expected})"));
-            }
+        let expected = release.sha256.as_ref().ok_or("the update has no checksum to check it against")?;
+        let found = sha256_of(&package)?;
+        if &found != expected {
+            let _ = std::fs::remove_dir_all(&folder);
+            return Err(format!("the download does not match its checksum ({found} is not {expected})"));
         }
         let unpacked = folder.join("unpacked");
         let ditto = find_program("ditto").ok_or("`ditto` was not found, and is needed to unpack the update")?;
@@ -122,6 +123,14 @@ impl UpdateService for GithubUpdates {
         let app = find_app(&unpacked).ok_or("the update does not hold an app")?;
         if !app.join("Contents").join("MacOS").is_dir() {
             return Err("the update does not hold a program".to_owned());
+        }
+        // The bundle must hold together: no file changed or added since it was signed.
+        if let Some(codesign) = find_program("codesign") {
+            let verified = Command::new(codesign).args(["--verify", "--deep", "--strict"]).arg(&app).stdin(Stdio::null()).output();
+            if !verified.is_ok_and(|o| o.status.success()) {
+                let _ = std::fs::remove_dir_all(&folder);
+                return Err("the update's code signature is not valid".to_owned());
+            }
         }
         let _ = std::fs::remove_file(&package);
         // Older downloads are no longer wanted.
@@ -158,7 +167,7 @@ fn find_app(dir: &Path) -> Option<PathBuf> {
     std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "app") && p.is_dir())
 }
 
-fn sha256_of(file: &Path) -> Result<String, String> {
+pub(crate) fn sha256_of(file: &Path) -> Result<String, String> {
     let tool = find_program("shasum").ok_or("`shasum` was not found, and is needed to check the update")?;
     let output = Command::new(tool).args(["-a", "256"]).arg(file).env("PATH", search_path()).stdin(Stdio::null()).output().map_err(|e| format!("cannot run `shasum`: {e}"))?;
     let text = String::from_utf8_lossy(&output.stdout);

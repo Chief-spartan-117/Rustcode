@@ -115,12 +115,12 @@ fn host_script_path() -> Result<PathBuf, String> {
     static SCRIPT: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
     SCRIPT
         .get_or_init(|| {
-            let dir = std::env::temp_dir();
-            let script = dir.join(format!("rustcode-extension-host-{}.js", std::process::id()));
-            let part = dir.join(format!("rustcode-extension-host-{}.js.part", std::process::id()));
+            let dir = crate::programs::private_dir().map_err(|e| format!("cannot make a folder for the extension host: {e}"))?;
+            let script = dir.join(format!("extension-host-{}.js", std::process::id()));
+            let part = dir.join(format!("extension-host-{}.js.part", std::process::id()));
             // The part about views, source control, tasks and terminals goes where it is marked.
             let script_text = HOST_SCRIPT.replace("// @@SERVICES@@", SERVICES_SCRIPT).replace("// @@COMPAT@@", COMPAT_SCRIPT);
-            std::fs::write(&part, script_text)
+            crate::programs::write_private(&part, &script_text, false)
                 .and_then(|()| std::fs::rename(&part, &script))
                 .map_err(|e| format!("cannot write the extension host: {e}"))?;
             Ok(script)
@@ -1081,7 +1081,10 @@ impl ExtensionHost for NodeExtensionHost {
     }
 
     fn install_from_marketplace(&self, extension: &rustcode_application::MarketExtension) -> Result<String, String> {
-        let archive = std::env::temp_dir().join(format!("{}-{}.vsix", extension.id, extension.version));
+        // The id and version come from the network: keep them to plain characters in the file name.
+        let plain = |text: &str| text.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-') { c } else { '_' }).collect::<String>();
+        let folder = crate::programs::private_dir().map_err(|e| e.to_string())?;
+        let archive = folder.join(format!("{}-{}.vsix", plain(&extension.id), plain(&extension.version)));
         crate::marketplace::download(&extension.download_url, &archive)?;
         let result = self.install_package(&archive);
         let _ = std::fs::remove_file(&archive);

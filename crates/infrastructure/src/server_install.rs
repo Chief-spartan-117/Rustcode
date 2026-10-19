@@ -399,7 +399,16 @@ pub(crate) fn choose_release_file(release: &serde_json::Value, asset: Asset) -> 
 /// `curl` with the usual care: fail on HTTP errors, follow redirects, retry once.
 pub(crate) fn curl(args: &[&str]) -> Result<Vec<u8>, String> {
     let tool = find_program("curl").ok_or("`curl` is needed to download a server, and was not found")?;
-    let output = Command::new(tool)
+    // Addresses can come from the network (a release's file list, the marketplace): only https,
+    // also after a redirect, so `file://` and the like are never fetched.
+    if !cfg!(test) && args.iter().any(|a| a.contains("://") && !a.starts_with("https://")) {
+        return Err("only https addresses are downloaded".to_owned());
+    }
+    let mut command = Command::new(tool);
+    if !cfg!(test) {
+        command.args(["--proto", "=https", "--proto-redir", "=https"]);
+    }
+    let output = command
         .args(["--fail", "--silent", "--show-error", "--location", "--retry", "2", "--connect-timeout", "20"])
         .args(args)
         .env("PATH", search_path())
@@ -467,7 +476,7 @@ pub(crate) fn extract_zip(file: &std::path::Path, dest: &std::path::Path, only: 
         #[cfg(unix)]
         if let Some(mode) = entry.unix_mode() {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(mode & 0o7777));
+            let _ = std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(mode & 0o777));
         }
     }
     Ok(())
@@ -490,8 +499,20 @@ fn flatten_unless_found(dir: &std::path::Path, program: &str) -> Result<(), Stri
     std::fs::remove_dir(only).map_err(|e| e.to_string())
 }
 
+/// The SHA-256 GitHub lists for the release file at `url` (its `digest`, `sha256:<hex>`), if it does.
+pub(crate) fn release_file_digest(release: &serde_json::Value, url: &str) -> Option<String> {
+    let asset = release["assets"].as_array()?.iter().find(|a| a["browser_download_url"].as_str() == Some(url))?;
+    let hash = asset["digest"].as_str()?.strip_prefix("sha256:")?.to_ascii_lowercase();
+    (hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())).then_some(hash)
+}
+
 /// Put the file at `url` (already known to be `tag`) in `pkg/<name>`, replacing what was there.
 pub(crate) fn install_from_url(spec: &DownloadSpec, asset: Asset, url: &str, tag: &str, root: &std::path::Path) -> Result<(), String> {
+    install_checked(spec, asset, url, tag, None, root)
+}
+
+/// Like `install_from_url`, and refuses a download whose SHA-256 is not `sha256`, when one is given.
+pub(crate) fn install_checked(spec: &DownloadSpec, asset: Asset, url: &str, tag: &str, sha256: Option<&str>, root: &std::path::Path) -> Result<(), String> {
     let pkg = root.join("pkg");
     let target = pkg.join(spec.name);
     let work = pkg.join(format!(".{}-new", spec.name));
@@ -501,6 +522,12 @@ pub(crate) fn install_from_url(spec: &DownloadSpec, asset: Asset, url: &str, tag
         let file_name = url.rsplit('/').next().unwrap_or("download");
         let file = work.join(format!("download-{file_name}"));
         curl(&["--output", file.to_str().ok_or("a path that is not text")?, url])?;
+        if let Some(expected) = sha256 {
+            let found = crate::github_updates::sha256_of(&file)?;
+            if found != expected {
+                return Err(format!("the download of {} does not match its checksum", spec.name));
+            }
+        }
         let exe_name = if cfg!(windows) { format!("{}.exe", spec.program) } else { spec.program.to_owned() };
         match asset.kind {
             Kind::Raw => {
@@ -572,7 +599,8 @@ pub(crate) fn download_server(name: &str, root: &std::path::Path) -> Result<(), 
     if std::fs::read_to_string(dir.join(".version")).is_ok_and(|v| v.trim() == tag) && installed_program(&dir, spec.program).is_some() {
         return Ok(());
     }
-    install_from_url(spec, asset, &url, &tag, root)
+    let digest = release_file_digest(&release, &url);
+    install_checked(spec, asset, &url, &tag, digest.as_deref(), root)
 }
 
 // ---- servers inside extensions -------------------------------------------------------------------

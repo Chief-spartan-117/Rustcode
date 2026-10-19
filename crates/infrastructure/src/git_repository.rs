@@ -154,11 +154,9 @@ fn git_output_env(
 /// A tiny script that answers git's questions from environment variables.
 #[cfg(unix)]
 fn askpass_script() -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    let path = std::env::temp_dir().join(format!("rustcode-askpass-{}.sh", std::process::id()));
+    let path = crate::programs::private_dir().ok()?.join(format!("askpass-{}.sh", std::process::id()));
     let body = "#!/bin/sh\ncase \"$1\" in\n  *sername*) printf '%s\\n' \"$RUSTCODE_GIT_USER\" ;;\n  *) printf '%s\\n' \"$RUSTCODE_GIT_PASS\" ;;\nesac\n";
-    std::fs::write(&path, body).ok()?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).ok()?;
+    crate::programs::write_private(&path, body, true).ok()?;
     Some(path)
 }
 
