@@ -83,8 +83,19 @@ if [ "$WITH_SERVERS" = "yes" ]; then
     RUSTCODE_SERVERS_DIR="$APP/Contents/Resources/servers" "target/$PROFILE/rustcode" --install-language-servers ${RUSTCODE_BUNDLE_SERVERS:-all -rust-analyzer} || \
         echo "some language servers could not be added; they will install themselves when first needed"
 fi
-if [ -n "${CODESIGN_IDENTITY:-}" ]; then
-    codesign --force --deep --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP"
+# Ad hoc signing ("-") needs no Apple account; it is the default. A real identity adds the
+# hardened runtime and a secure timestamp.
+CODESIGN_IDENTITY=${CODESIGN_IDENTITY:--}
+if [ "$CODESIGN_IDENTITY" = "-" ]; then
+    SIGN_OPTS="--timestamp=none"
+    DMG_OPTS="--timestamp=none"
+else
+    SIGN_OPTS="--options runtime --timestamp"
+    DMG_OPTS="--timestamp"
+fi
+if [ -n "$CODESIGN_IDENTITY" ]; then
+    # shellcheck disable=SC2086
+    codesign --force --deep $SIGN_OPTS --sign "$CODESIGN_IDENTITY" "$APP"
     codesign --verify --deep --strict "$APP"
 fi
 echo "built $APP"
@@ -108,9 +119,8 @@ if [ "$DIST" = "yes" ]; then
     ln -s /Applications "$STAGE/Applications"
     hdiutil create -volname RustCode -srcfolder "$STAGE" -ov -format UDZO "$DIST_DIR/$NAME.dmg" >/dev/null
     rm -rf "$STAGE"
-    if [ -n "${CODESIGN_IDENTITY:-}" ]; then
-        codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$DIST_DIR/$NAME.dmg"
-    fi
+    # shellcheck disable=SC2086
+    codesign --force $DMG_OPTS --sign "$CODESIGN_IDENTITY" "$DIST_DIR/$NAME.dmg"
     if [ "$NOTARIZE" = "yes" ]; then
         notarize "$DIST_DIR/$NAME.dmg"
         xcrun stapler staple "$DIST_DIR/$NAME.dmg"

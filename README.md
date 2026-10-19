@@ -35,7 +35,20 @@ cargo run -p rustcode -- <path>  # open a file or folder
 cargo test --workspace           # run the tests
 ```
 
-On macOS, `scripts/bundle-macos.sh` builds `RustCode.app` (see the comments at the top of that script for options).
+### Install on macOS
+
+Download `RustCode-<version>-macos-<arch>.dmg` from the [releases page](../../releases) (`arm64` for Apple Silicon, `x86_64` for Intel) and drag RustCode to Applications.
+
+The app is signed ad hoc, not with a paid Apple Developer ID, so macOS warns on the first start. Do one of these once:
+
+- Right-click RustCode, choose Open, then Open. On macOS 15 and later, open System Settings, Privacy & Security, and choose Open Anyway.
+- Or run `xattr -cr /Applications/RustCode.app` in Terminal.
+
+Updates installed from inside the app need no further steps.
+
+### Build on macOS
+
+`scripts/bundle-macos.sh` builds `RustCode.app` (see the comments at the top of that script for options).
 
 Notebooks run Python with the built-in driver. Other kernels need `jupyter_client` and the kernel installed (for example `pip install jupyter_client ipykernel`).
 
