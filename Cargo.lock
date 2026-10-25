@@ -5104,9 +5104,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.4"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+checksum = "278e9268c93b9e498a2da46c34d90ba93a3255eb99009646398f34bc73ab36eb"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",
@@ -5666,7 +5666,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "cocoa 0.27.0",
  "dirs 6.0.0",
@@ -5679,7 +5679,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-application"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "alacritty_terminal",
  "fancy-regex",
@@ -5694,7 +5694,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-domain"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "pulldown-cmark",
  "regex",
@@ -5706,7 +5706,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-infrastructure"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "dirs 6.0.0",
  "git2",
@@ -5730,7 +5730,7 @@ dependencies = [
 
 [[package]]
 name = "rustcode-presentation"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "block2",
  "chrono",
