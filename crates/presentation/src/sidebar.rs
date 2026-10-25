@@ -1303,6 +1303,7 @@ impl EditorView {
             self.shell.sync_watches();
             self.shell.sidebar_visible = true;
             self.log(format!("added {} to the workspace", path.display()));
+            self.warn_if_untrusted(cx);
         }
         cx.notify();
     }
@@ -1375,6 +1376,7 @@ impl EditorView {
             self.git_state = crate::git_view::GitState::new();
             self.refresh_git(cx);
             self.log(format!("opened folder {}", path.display()));
+            self.warn_if_untrusted(cx);
         }
         cx.notify();
     }

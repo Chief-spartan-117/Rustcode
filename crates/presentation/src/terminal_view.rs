@@ -456,9 +456,10 @@ impl EditorView {
     /// Take what the shells printed since the last look.
     pub(crate) fn pump_terminal(&mut self, cx: &mut Context<Self>) {
         let mut changed = false;
-        // A flood of output is taken in parts, so the window keeps answering between them.
-        let mut budget = PUMP_BYTES_PER_TICK;
         for session in &mut self.terminal.sessions {
+            // A flood of output is taken in parts, so the window keeps answering between them. Each
+            // tab has its own share: one that floods must not starve the others.
+            let mut budget = PUMP_BYTES_PER_TICK;
             loop {
                 if budget == 0 {
                     break;

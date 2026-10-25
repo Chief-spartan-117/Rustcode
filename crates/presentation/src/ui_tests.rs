@@ -1245,6 +1245,17 @@ fn cut_and_paste_commands_round_trip(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn opening_an_untrusted_folder_shows_the_trust_banner(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx, "");
+    let dir = std::env::temp_dir().join(format!("rustcode-banner-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(!view.read_with(cx, |v, _| v.shell.trust_banner));
+    view.update(cx, |v, cx| v.open_workspace_folder(&dir, cx));
+    assert!(view.read_with(cx, |v, _| v.shell.trust_banner));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[gpui::test]
 fn about_action_reports_the_version(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, "");
     cx.dispatch_action(crate::actions::About);

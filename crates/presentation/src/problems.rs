@@ -210,7 +210,16 @@ impl EditorView {
         match saved {
             Ok(()) => {
                 self.shell.trust_banner = false;
-                self.notify_user(ToastLevel::Info, "The open folders are trusted: their tools may run.".to_owned(), cx);
+                // Language servers that were refused start now; the extension host starts when an
+                // extension is first used.
+                self.lsp.retry_failed();
+                self.lsp_versions.clear();
+                self.sync_language_servers(cx);
+                self.notify_user(
+                    ToastLevel::Info,
+                    "The open folders are trusted. Language servers are starting; extensions start the next time you run one of their commands.".to_owned(),
+                    cx,
+                );
                 self.run_diagnostics(cx);
             }
             Err(error) => self.notify_user(ToastLevel::Error, format!("cannot save {}: {error}", file.display()), cx),
