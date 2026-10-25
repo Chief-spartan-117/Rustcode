@@ -9,4 +9,4 @@ regex.workspace = true
 unicode-segmentation.workspace = true
 thiserror.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false }
-similar = "2"
+similar = "3"
