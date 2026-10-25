@@ -248,7 +248,9 @@ impl EditorView {
         let doc = self.add_document(Document::new(id, title.to_owned(), TextBuffer::default()));
         self.read_only_docs.insert(doc);
         self.webviews.next_app += 1;
-        let options = WebviewOptions { enable_scripts: true, enable_command_uris: false, local_roots: Some(Vec::new()) };
+        // Markup that came with a notebook (a downloaded one, perhaps) gets no scripts; a page a
+        // tool on this computer serves (DevTools) needs them.
+        let options = WebviewOptions { enable_scripts: html.is_none(), enable_command_uris: false, local_roots: Some(Vec::new()) };
         let mut tab = WebviewTab::new(APP_WEBVIEWS + self.webviews.next_app, WebviewKind::Local, options, None);
         tab.html = html.unwrap_or_default();
         tab.url = url;

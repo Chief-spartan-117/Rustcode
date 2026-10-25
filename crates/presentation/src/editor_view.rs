@@ -1966,13 +1966,17 @@ impl Render for EditorView {
         .on_action(cx.listener(|this, _: &ConfigureFormatter, _w, cx| this.open_configure_formatter(cx)))
         .on_action(cx.listener(|this, _: &ConfigureLinters, _w, cx| this.open_configure_linters(cx)));
 
+        let side_position = self.shell.side_bar_position;
+        let side_vertical = matches!(side_position, crate::shell::SideBarPosition::Left | crate::shell::SideBarPosition::Right);
         let editor_column = div()
             .flex_1()
             .min_w_0()
-            .h_full()
+            .min_h_0()
+            .when(side_vertical, |column| column.h_full())
+            .when(!side_vertical, |column| column.w_full())
             .flex()
             .flex_col()
-            .child(
+            .children((!(self.shell.panel_visible && self.shell.panel_maximized)).then(|| {
                 div()
                     .relative()
                     .flex_1()
@@ -1981,8 +1985,8 @@ impl Render for EditorView {
                     .flex_row()
                     .child(self.render_groups(window, cx))
                     .children(self.render_debug_bar(cx))
-                    .children((self.palette.open && self.palette.mode != crate::palette::PaletteMode::Projects).then(|| self.render_palette(window, cx))),
-            )
+                    .children((self.palette.open && self.palette.mode != crate::palette::PaletteMode::Projects).then(|| self.render_palette(window, cx)))
+            }))
             .children(self.shell.panel_visible.then(|| self.render_panel(window, cx)));
 
         // Typed text has somewhere to go even when no editor is drawn (the welcome screen, a
@@ -2001,25 +2005,27 @@ impl Render for EditorView {
 
         root.child(fallback_input)
             .children(self.render_title_bar(window, cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_row()
-                    .child(self.render_activity_bar(cx))
-                    .children(self.shell.sidebar_visible.then(|| {
-                        div()
-                            .flex()
-                            .flex_row()
-                            .flex_none()
-                            .h_full()
-                            .border_r_1()
-                            .border_color(self.theme.border)
-                            .child(self.render_side_panel(window, cx))
-                    }))
-                    .child(editor_column),
-            )
+            .children(self.render_trust_banner(cx))
+            .child({
+                // The activity bar and the side bar sit along the chosen edge, the editor takes the rest.
+                let activity = self.render_activity_bar(cx);
+                let side = self.shell.sidebar_visible.then(|| {
+                    div()
+                        .flex()
+                        .flex_row()
+                        .flex_none()
+                        .when(side_vertical, |wrapper| wrapper.h_full())
+                        .when(!side_vertical, |wrapper| wrapper.w_full())
+                        .child(self.render_side_panel(window, cx))
+                });
+                let before_editor = matches!(side_position, crate::shell::SideBarPosition::Left | crate::shell::SideBarPosition::Top);
+                let frame = div().flex_1().min_h_0().flex().when(side_vertical, |f| f.flex_row()).when(!side_vertical, |f| f.flex_col());
+                if before_editor {
+                    frame.child(activity).children(side).child(editor_column)
+                } else {
+                    frame.child(editor_column).children(side).child(activity)
+                }
+            })
             .child(self.render_status_bar(line_count, cx))
             .children(self.shell.context_menu.as_ref().map(|menu| self.render_context_menu(menu, window, cx)))
             // The project list hangs from the chip, so it is placed in window coordinates, here.

@@ -43,6 +43,15 @@ impl FileWriter for StdFileSystem {
 }
 
 fn copy_recursive(from: &Path, to: &Path) -> Result<(), FileError> {
+    // A link is copied as a link: following one that points back up the tree would copy forever.
+    #[cfg(unix)]
+    if from.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+        let target = std::fs::read_link(from).map_err(|err| io_error(from, err))?;
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|err| io_error(parent, err))?;
+        }
+        return std::os::unix::fs::symlink(target, to).map_err(|err| io_error(to, err));
+    }
     if from.is_dir() {
         std::fs::create_dir_all(to).map_err(|err| io_error(to, err))?;
         for entry in std::fs::read_dir(from).map_err(|err| io_error(from, err))?.flatten() {

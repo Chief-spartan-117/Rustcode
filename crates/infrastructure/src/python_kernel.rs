@@ -18,7 +18,9 @@ pub struct PythonKernels;
 pub(crate) fn python_for(folder: &Path) -> Option<PathBuf> {
     let venvs = ["venv", ".venv", "env", ".env"];
     let relative: &[&str] = if cfg!(windows) { &["Scripts", "python.exe"] } else { &["bin", "python"] };
-    let local = venvs.iter().map(|venv| relative.iter().fold(folder.join(venv), |path, part| path.join(part))).find(|p| p.is_file());
+    // A virtual environment in the folder is a program from the folder: only when it is trusted.
+    let trusted = crate::programs::folder_is_trusted(folder);
+    let local = venvs.iter().map(|venv| relative.iter().fold(folder.join(venv), |path, part| path.join(part))).find(|p| trusted && p.is_file());
     local.or_else(|| {
         let names: &[&str] = if cfg!(windows) { &["python", "python3"] } else { &["python3", "python"] };
         names.iter().find_map(|name| crate::programs::find_program(name))
@@ -32,7 +34,7 @@ pub(crate) fn python_environments(folder: &Path) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = ["venv", ".venv", "env", ".env"]
         .iter()
         .map(|venv| relative.iter().fold(folder.join(venv), |path, part| path.join(part)))
-        .filter(|p| p.is_file())
+        .filter(|p| p.is_file() && crate::programs::folder_is_trusted(folder))
         .collect();
     let names: &[&str] = if cfg!(windows) { &["python", "python3"] } else { &["python3", "python"] };
     found.extend(names.iter().filter_map(|name| crate::programs::find_program(name)));
@@ -49,6 +51,25 @@ pub(crate) fn python_environments(folder: &Path) -> Vec<PathBuf> {
 
 /// `Python 3.12.1` for an interpreter, when it answers.
 pub(crate) fn python_version(python: &Path) -> Option<String> {
+    // Asking starts the interpreter; an interpreter that has not changed answers the same.
+    static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (std::time::SystemTime, Option<String>)>>> = std::sync::Mutex::new(None);
+    let stamp = std::fs::metadata(python).and_then(|m| m.modified()).ok();
+    if let Some(stamp) = stamp {
+        let seen = SEEN.lock().ok()?;
+        if let Some((at, version)) = seen.as_ref().and_then(|m| m.get(python)) {
+            if *at == stamp {
+                return version.clone();
+            }
+        }
+    }
+    let version = ask_python_version(python);
+    if let (Some(stamp), Ok(mut seen)) = (stamp, SEEN.lock()) {
+        seen.get_or_insert_with(Default::default).insert(python.to_path_buf(), (stamp, version.clone()));
+    }
+    version
+}
+
+fn ask_python_version(python: &Path) -> Option<String> {
     let out = Command::new(python).arg("--version").env("PATH", crate::programs::search_path()).output().ok()?;
     let text = String::from_utf8_lossy(if out.stdout.is_empty() { &out.stderr } else { &out.stdout }).trim().to_owned();
     (out.status.success() && !text.is_empty()).then_some(text)

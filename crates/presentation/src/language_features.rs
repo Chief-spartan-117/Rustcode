@@ -182,6 +182,23 @@ impl EditorView {
 
     // ---- applying changes ----------------------------------------------------------------------
 
+    /// Whether `path` is inside one of the open folders. Links and `..` are resolved first; a
+    /// path that does not exist yet is judged by its text, and `..` in it is refused.
+    fn inside_workspace(&self, path: &std::path::Path) -> bool {
+        let real = path.canonicalize().ok();
+        if real.is_none() && path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return false;
+        }
+        let checked = real.as_deref().unwrap_or(path);
+        self.shell.explorers.iter().any(|tree| {
+            let root = tree.root();
+            match real {
+                Some(_) => root.canonicalize().is_ok_and(|root| checked.starts_with(root)),
+                None => checked.starts_with(root),
+            }
+        })
+    }
+
     /// Make the changes to several files. Files that are open change in the editor, as one undo
     /// step and unsaved; other files are changed on disk. Returns how many files changed.
     pub(crate) fn apply_file_edits(&mut self, files: Vec<FileEdit>, cx: &mut Context<Self>) -> usize {
@@ -203,7 +220,12 @@ impl EditorView {
                 }
                 continue;
             }
-            // A file nobody has open: change it on disk.
+            // A file nobody has open: change it on disk, but only inside the open folders. A
+            // language server or extension that names another file (a shell profile, say) is refused.
+            if !self.inside_workspace(&file.path) {
+                self.set_status(format!("refused an edit to {}: it is outside the open folders", file.path.display()));
+                continue;
+            }
             let Ok(text) = self.shell.reader.read_to_string(&file.path) else { continue };
             let mut editor = Editor::new(TextBuffer::from_text(&text));
             let ranges = edit_ranges(editor.buffer(), &file.edits);

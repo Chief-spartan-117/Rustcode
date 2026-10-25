@@ -22,6 +22,8 @@ use crate::text_layout::{LineLayout, line_height};
 const TERMINAL_PADDING: f32 = 8.0;
 /// How often shell output is picked up.
 const POLL: Duration = Duration::from_millis(16);
+/// Most shell output taken in at one look.
+const PUMP_BYTES_PER_TICK: usize = 512 * 1024;
 const DEFAULT_COLUMNS: usize = 80;
 const DEFAULT_ROWS: usize = 12;
 
@@ -75,6 +77,8 @@ pub(crate) struct TerminalState {
     task: Option<Task<()>>,
     /// The link of an extension that the mouse is over.
     pub hover_link: Option<HoverLink>,
+    /// Part of a line a trackpad scrolled that has not added up to a whole line yet.
+    scroll_remainder: f32,
 }
 
 impl TerminalState {
@@ -91,6 +95,7 @@ impl TerminalState {
             next_serial: 1,
             task: None,
             hover_link: None,
+            scroll_remainder: 0.0,
         }
     }
 
@@ -451,10 +456,16 @@ impl EditorView {
     /// Take what the shells printed since the last look.
     pub(crate) fn pump_terminal(&mut self, cx: &mut Context<Self>) {
         let mut changed = false;
+        // A flood of output is taken in parts, so the window keeps answering between them.
+        let mut budget = PUMP_BYTES_PER_TICK;
         for session in &mut self.terminal.sessions {
             loop {
+                if budget == 0 {
+                    break;
+                }
                 match session.events.try_recv() {
                     Ok(PtyEvent::Output(bytes)) => {
+                        budget = budget.saturating_sub(bytes.len());
                         self.ext_ui.task_ends.extend(crate::ext_workbench::task_end_markers(&mut session.marker_tail, &bytes));
                         if let Some(capture) = session.capture.as_mut().filter(|c| c.len() < 4_000_000) {
                             capture.extend_from_slice(&bytes);
@@ -855,8 +866,11 @@ impl EditorView {
             )
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _w, cx| this.terminal_hover(event, cx)))
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _w, cx| {
-                let delta = event.delta.pixel_delta(px(line_height())).y;
-                let lines = (delta / px(line_height())).round() as i32;
+                // A trackpad sends deltas well under one line; keep the rest until it adds up.
+                let delta = f32::from(event.delta.pixel_delta(px(line_height())).y) / line_height();
+                let total = this.terminal.scroll_remainder + delta;
+                let lines = total.trunc() as i32;
+                this.terminal.scroll_remainder = total - lines as f32;
                 if lines != 0 {
                     this.terminal_scroll(lines, cx);
                 }

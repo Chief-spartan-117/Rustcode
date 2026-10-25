@@ -14,6 +14,7 @@ struct Project(PathBuf);
 
 impl Project {
     fn new(name: &str, files: &[(&str, &str)]) -> Self {
+        std::env::set_var("RUSTCODE_TRUST_ALL", "1");
         let dir = std::env::temp_dir().join(format!("rustcode-fmt-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for (file, text) in files {

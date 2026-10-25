@@ -17,7 +17,7 @@ use crate::shell::{
     ContextMenu, ContextTarget, FileClipboard, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, ROW_HEIGHT,
 };
 
-const CONTEXT_MENU_WIDTH: f32 = 290.0;
+pub(crate) const CONTEXT_MENU_WIDTH: f32 = 290.0;
 
 /// Explorer rows being dragged.
 pub(crate) struct DraggedEntries {
@@ -235,6 +235,16 @@ pub(crate) fn context_entries(target: &ContextTarget) -> Vec<ContextItem> {
                 command("Open Keyboard Shortcuts (JSON)", "code", ids::OPEN_KEYBINDINGS, None),
             ]
         }
+        ContextTarget::ActivityBar => {
+            use crate::palette::ids;
+            let command = |label, icon, id| entry(label, icon, ContextAction::Command(id), None);
+            vec![
+                command("Move Side Bar to the Left", "arrow-left", ids::SIDEBAR_LEFT),
+                command("Move Side Bar to the Right", "arrow-right", ids::SIDEBAR_RIGHT),
+                command("Move Side Bar to the Top", "arrow-up", ids::SIDEBAR_TOP),
+                command("Move Side Bar to the Bottom", "arrow-down", ids::SIDEBAR_BOTTOM),
+            ]
+        }
         ContextTarget::NoFolder => vec![
             entry("Open Folder...", "folder-open", ContextAction::OpenFolder, Some((|| Box::new(a::OpenFolder), a::WORKBENCH_CONTEXT))),
             entry("New File", "file-plus", ContextAction::NewUntitled, Some((|| Box::new(a::NewFile), a::WORKBENCH_CONTEXT))),
@@ -368,14 +378,13 @@ impl EditorView {
     pub(crate) fn side_panel_frame(&self, id: &'static str, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = &self.theme;
         let hover = theme.lists.hover;
+        use crate::shell::SideBarPosition as Position;
+        let position = self.shell.side_bar_position;
+        let vertical = matches!(position, Position::Left | Position::Right);
+        // The draggable edge is the one facing the editor.
         let resize_handle = div()
             .id("sidebar-resize")
             .absolute()
-            .top_0()
-            .right(px(-2.))
-            .w(px(5.))
-            .h_full()
-            .cursor_col_resize()
             .hover(move |style| style.bg(hover))
             .on_mouse_down(
                 MouseButton::Left,
@@ -385,16 +394,27 @@ impl EditorView {
                     cx.notify();
                 }),
             );
+        let resize_handle = match position {
+            Position::Left => resize_handle.top_0().right(px(-2.)).w(px(5.)).h_full().cursor_col_resize(),
+            Position::Right => resize_handle.top_0().left(px(-2.)).w(px(5.)).h_full().cursor_col_resize(),
+            Position::Top => resize_handle.left_0().bottom(px(-2.)).h(px(5.)).w_full().cursor_row_resize(),
+            Position::Bottom => resize_handle.left_0().top(px(-2.)).h(px(5.)).w_full().cursor_row_resize(),
+        };
         div()
             .id(id)
             .relative()
-            .w(px(self.shell.sidebar_width))
             .flex_none()
-            .h_full()
+            .when(vertical, |frame| frame.w(px(self.shell.sidebar_width)).h_full())
+            .when(!vertical, |frame| frame.h(px(self.shell.sidebar_height)).w_full())
             .flex()
             .flex_col()
             .bg(theme.side_bar.background)
-            .border_r_1()
+            .map(|frame| match position {
+                Position::Left => frame.border_r_1(),
+                Position::Right => frame.border_l_1(),
+                Position::Top => frame.border_b_1(),
+                Position::Bottom => frame.border_t_1(),
+            })
             .border_color(theme.side_bar.border)
             .text_color(theme.side_bar.foreground)
             .child(resize_handle)
@@ -602,12 +622,20 @@ impl EditorView {
                 .children(shortcut.map(|keys| div().flex_none().text_size(px(12.)).text_color(dim).child(keys)))
                 .into_any_element()
         });
+        // Kept inside the window, wherever it was opened.
+        let size = window.viewport_size();
+        let height = match &menu.target {
+            ContextTarget::Extension { .. } => 0.0,
+            other => context_menu_height(other),
+        };
+        let left = menu.position.x.min(size.width - px(CONTEXT_MENU_WIDTH + 4.)).max(px(0.));
+        let top = menu.position.y.min(size.height - px(height + 4.)).max(px(0.));
         deferred(
             div()
                 .id("explorer-context-menu")
                 .absolute()
-                .left(menu.position.x)
-                .top(menu.position.y)
+                .left(left)
+                .top(top)
                 .w(px(CONTEXT_MENU_WIDTH))
                 .py(px(4.))
                 .flex()

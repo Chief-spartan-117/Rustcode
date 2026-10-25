@@ -427,6 +427,11 @@ impl Drop for Server {
 }
 
 fn start_server(spec: &ServerSpec, folder: &Path, installable: bool) -> Result<Server, String> {
+    // Servers run the project's build scripts (rust-analyzer), load its plugins and compilers
+    // (TypeScript, ESLint) or read its configuration to start programs.
+    if !crate::programs::folder_is_trusted(folder) {
+        return Err(format!("{} is off: this folder is not trusted. Run \"Workspace: Trust This Folder\" to turn it on", spec.name));
+    }
     let (program, args) = spec
         .commands
         .iter()

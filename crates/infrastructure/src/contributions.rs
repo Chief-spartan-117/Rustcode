@@ -388,8 +388,13 @@ pub fn install_vsix(archive: &Path, into: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
 
     let unpacked = (|| -> Result<(), String> {
+        let mut total = 0u64;
         for index in 0..zip.len() {
             let mut entry = zip.by_index(index).map_err(|e| e.to_string())?;
+            total = total.saturating_add(entry.size());
+            if total > crate::server_install::MAX_UNPACKED_BYTES {
+                return Err("the extension holds more data than expected, so it was not unpacked".to_owned());
+            }
             // `enclosed_name` is `None` for paths that would escape the folder.
             let Some(path) = entry.enclosed_name() else { continue };
             let Ok(relative) = path.strip_prefix("extension") else { continue };

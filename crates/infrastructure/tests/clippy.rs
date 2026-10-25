@@ -13,6 +13,7 @@ fn clippy_lints_come_back_named_clippy_and_plain_check_leaves_them_out() {
         eprintln!("cargo clippy is not installed; skipped");
         return;
     }
+    std::env::set_var("RUSTCODE_TRUST_ALL", "1");
     let dir = std::env::temp_dir().join(format!("rustcode-clippy-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();

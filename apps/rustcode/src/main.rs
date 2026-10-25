@@ -331,7 +331,15 @@ fn main() {
     let chrome = args.chrome.clone();
     // Started from the Dock or Finder, the working folder is "/": there is no project, and the
     // window offers to open one.
-    let no_project = args.file.is_none() && std::env::current_dir().is_ok_and(|dir| dir == std::path::Path::new("/"));
+    let from_dock = args.file.is_none() && std::env::current_dir().is_ok_and(|dir| dir == std::path::Path::new("/"));
+    let session: Arc<dyn rustcode_application::SessionStore> =
+        match JsonSessionStore::in_user_data_dir() {
+            Some(store) => Arc::new(store),
+            None => Arc::new(NullSessionStore),
+        };
+    // From the Dock, reopen the folder that was open last time; with none, there is no project.
+    let last_root = from_dock.then(|| session.recent_roots().into_iter().next()).flatten();
+    let no_project = from_dock && last_root.is_none();
     // A folder with no file named: nothing is open, so the empty state shows.
     let show_empty = no_project || args.file.as_ref().is_some_and(|path| path.is_dir());
     let (ui_font, code_font) = (
@@ -343,12 +351,7 @@ fn main() {
             .unwrap_or_else(|| assets::CODE_FONT.to_owned()),
     );
     let theme = load_theme(args.theme.as_ref());
-    let root = workspace_root(args.file.as_ref());
-    let session: Arc<dyn rustcode_application::SessionStore> =
-        match JsonSessionStore::in_user_data_dir() {
-            Some(store) => Arc::new(store),
-            None => Arc::new(NullSessionStore),
-        };
+    let root = last_root.unwrap_or_else(|| workspace_root(args.file.as_ref()));
     // With no file named, reopen what was open last time here.
     let restore_session = args.file.is_none() && !no_project && session.load(&root).is_some();
     let document = if restore_session {
@@ -485,6 +488,8 @@ fn main() {
                         }
                         if no_project {
                             view.update(cx, |view, _| view.clear_workspace());
+                        } else {
+                            view.update(cx, |view, cx| view.warn_if_untrusted(cx));
                         }
                         window.focus(&view.focus_handle(cx));
                         view

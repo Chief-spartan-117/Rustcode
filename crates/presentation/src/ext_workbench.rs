@@ -892,21 +892,23 @@ impl EditorView {
         let active = self.shell.sidebar_visible && self.shell.side_view == crate::shell::SideView::Extension(index);
         let (hover, color) = (theme.lists.hover, if active { bar.foreground } else { bar.inactive_foreground });
         let letter = container.title.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default();
-        div()
-            .id(("activity-ext", index as usize))
-            .w_full()
-            .h(px(crate::shell::ACTIVITY_BAR_WIDTH))
+        crate::shell::activity_slot(div().id(("activity-ext", index as usize)), self.shell.side_bar_position, if active { bar.active_border } else { bar.background })
             .flex()
             .items_center()
             .justify_center()
-            .border_l_2()
-            .border_color(if active { bar.active_border } else { bar.background })
             .when(active, |b| b.bg(bar.active_background))
             .hover(move |style| style.bg(hover))
             .cursor_pointer()
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _w, cx| this.show_side_view(crate::shell::SideView::Extension(index), cx)))
-            .child(
-                div()
+            .child(match &container.icon {
+                // The icon the extension gave; its own colors, dimmed while the view is not showing.
+                Some(path) => gpui::img(path.clone())
+                    .w(px(24.))
+                    .h(px(24.))
+                    .flex_none()
+                    .when(!active, |image| image.opacity(0.6))
+                    .into_any_element(),
+                None => div()
                     .w(px(24.))
                     .h(px(24.))
                     .flex()
@@ -917,8 +919,9 @@ impl EditorView {
                     .border_color(color)
                     .text_color(color)
                     .text_size(px(13.))
-                    .child(letter),
-            )
+                    .child(letter)
+                    .into_any_element(),
+            })
             .into_any_element()
     }
 

@@ -155,3 +155,14 @@ pub(crate) fn write_private(path: &Path, text: &str, executable: bool) -> std::i
     let _ = executable;
     options.open(path)?.write_all(text.as_bytes())
 }
+
+/// Whether `folder` may run its own code (see `rustcode_application::workspace_trust`). Tests
+/// work in throw-away folders, so they count as trusted.
+pub(crate) fn folder_is_trusted(folder: &Path) -> bool {
+    // `RUSTCODE_TRUST_ALL=1` is for tests and for people who want no such protection.
+    if cfg!(test) || std::env::var_os("RUSTCODE_TRUST_ALL").is_some_and(|v| v == "1") {
+        return true;
+    }
+    let Some(file) = dirs::home_dir().map(|home| home.join(".rustcode").join("trusted-folders")) else { return false };
+    rustcode_application::workspace_trust::is_trusted(&std::fs::read_to_string(file).unwrap_or_default(), folder)
+}
