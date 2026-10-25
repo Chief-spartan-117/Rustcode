@@ -1,3 +1,26 @@
+# Releases
+
+A release is made by itself on every push to `main`, with no pull request. `scripts/release.py` reads
+the [Conventional Commits](https://www.conventionalcommits.org) since the last tag:
+
+| Commits since the last release | New version |
+| --- | --- |
+| `fix:` or `perf:` | patch (0.4.0 to 0.4.1) |
+| `feat:` | minor (0.4.0 to 0.5.0) |
+| `feat!:` or a `BREAKING CHANGE:` footer | major (a minor one while below 1.0.0) |
+| only `docs:`, `chore:`, `ci:`, `test:`, `refactor:` ... | no release |
+
+It writes the version to `Cargo.toml` and `Cargo.lock` and the entry to `CHANGELOG.md`, commits
+`chore(release): vX.Y.Z [skip ci]` to `main`, tags it and creates the GitHub release. The macOS and
+Windows builds then attach their files to it.
+
+## One setting to change on GitHub
+
+The release commit goes straight to `main`, which a rule that asks for a pull request or a passing
+check refuses. Under Settings, Rules, Rulesets, open the rule for `main` and add **GitHub Actions**
+(or Repository admin) to its **Bypass list**. Without it the `version` job fails when it pushes.
+Your own pushes to `main` need the same bypass; otherwise keep using pull requests for them.
+
 # Signing releases
 
 The release workflow signs and notarizes when the secrets below exist. Without them it builds unsigned files.
