@@ -125,7 +125,8 @@ impl EditorView {
                 self.in_window_menu = shown;
             }
         }
-        if let Some(name) = &state.theme {
+        // A theme chosen in the settings is for every folder; the saved one is only the fallback.
+        if let Some(name) = state.theme.as_ref().filter(|_| self.config.editor.color_theme.is_none()) {
             if let Some(index) = self.themes.iter().position(|t| &t.name == name) {
                 if index != self.theme_index {
                     self.theme_index = index;

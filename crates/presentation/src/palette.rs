@@ -1426,6 +1426,9 @@ impl EditorView {
                 if theme != self.theme_index {
                     self.set_theme(theme, cx);
                 }
+                // The choice holds for every folder, not just this one.
+                let name = self.themes[self.theme_index].name.clone();
+                self.set_scope_setting(crate::app_pages::Scope::User, "workbench.colorTheme", Some(serde_json::json!(name)), cx);
                 self.close_palette(false, cx);
             }
             PaletteAction::ExtensionSetting(index) => {

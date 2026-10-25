@@ -1265,6 +1265,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("ui/arrow-right.svg", include_bytes!("../assets/ui/arrow-right.svg")),
     ("ui/arrow-square-out.svg", include_bytes!("../assets/ui/arrow-square-out.svg")),
     ("ui/arrow-up.svg", include_bytes!("../assets/ui/arrow-up.svg")),
+    ("ui/arrows-out-line-vertical.svg", include_bytes!("../assets/ui/arrows-out-line-vertical.svg")),
     ("ui/arrows-in-line-vertical.svg", include_bytes!("../assets/ui/arrows-in-line-vertical.svg")),
     ("ui/books.svg", include_bytes!("../assets/ui/books.svg")),
     ("ui/branch.svg", include_bytes!("../assets/ui/branch.svg")),
@@ -1388,7 +1389,10 @@ pub struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
-        Ok(FILES.binary_search_by_key(&path, |(name, _)| *name).ok().map(|index| Cow::Borrowed(FILES[index].1)))
+        // A map, not a binary search: the table is written by hand and its order must not matter.
+        static INDEX: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static [u8]>> = std::sync::OnceLock::new();
+        let index = INDEX.get_or_init(|| FILES.iter().copied().collect());
+        Ok(index.get(path).map(|bytes| Cow::Borrowed(*bytes)))
     }
 
     fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
@@ -1397,5 +1401,22 @@ impl AssetSource for Assets {
             .filter(|(name, _)| name.starts_with(path))
             .map(|(name, _)| SharedString::from(*name))
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_interface_icon_on_disk_can_be_loaded() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/ui");
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".svg") {
+                let path = format!("ui/{name}");
+                assert!(Assets.load(&path).unwrap().is_some(), "{path} is not bundled");
+            }
+        }
     }
 }

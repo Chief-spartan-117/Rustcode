@@ -85,6 +85,25 @@ impl SideBarPosition {
     }
 }
 
+impl SideBarPosition {
+    /// The bar runs up and down (along the left or right edge) rather than across.
+    pub(crate) fn is_vertical(self) -> bool {
+        matches!(self, SideBarPosition::Left | SideBarPosition::Right)
+    }
+}
+
+/// Size one button of the activity bar and mark the edge away from the editor when it is active.
+pub(crate) fn activity_slot(slot: gpui::Stateful<gpui::Div>, position: SideBarPosition, color: gpui::Rgba) -> gpui::Stateful<gpui::Div> {
+    let slot = if position.is_vertical() { slot.w_full().h(px(ACTIVITY_BAR_WIDTH)) } else { slot.h_full().w(px(ACTIVITY_BAR_WIDTH)) };
+    match position {
+        SideBarPosition::Left => slot.border_l_2(),
+        SideBarPosition::Right => slot.border_r_2(),
+        SideBarPosition::Top => slot.border_t_2(),
+        SideBarPosition::Bottom => slot.border_b_2(),
+    }
+    .border_color(color)
+}
+
 /// Where a right-click in the explorer landed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ContextTarget {
@@ -99,6 +118,8 @@ pub(crate) enum ContextTarget {
     Editor,
     /// The gear at the bottom of the activity bar.
     Manage,
+    /// The activity bar itself: where to put the side bar.
+    ActivityBar,
     /// A line of the output panel.
     Output,
     /// The "..." button of a notebook cell.
@@ -123,6 +144,8 @@ pub(crate) struct ContextMenu {
 
 /// State of the side bar, panel and the watches that keep the explorer current.
 pub(crate) struct Shell {
+    /// The bar under the title bar that says the folder is not trusted and offers to trust it.
+    pub trust_banner: bool,
     pub sidebar_visible: bool,
     pub side_view: SideView,
     pub panel_visible: bool,
@@ -168,6 +191,7 @@ impl Shell {
     pub fn new(root: PathBuf, reader: Arc<dyn FileReader>, watcher: Arc<dyn FileWatcher>) -> Self {
         Self {
             sidebar_visible: true,
+            trust_banner: false,
             side_view: SideView::Explorer,
             panel_visible: false,
             panel_tab: PanelTab::Output,
@@ -393,18 +417,14 @@ impl EditorView {
         let changes = self.git_state.status.as_ref().map_or(0, |s| s.changes.len());
         let git_badge = (changes > 0).then(|| count_badge(changes, theme.badge.activity_background, theme.badge.activity_foreground, 4., 7.));
         let (hover, active_color, dim, text) = (theme.lists.hover, bar.active_border, bar.inactive_foreground, bar.foreground);
+        let position = self.shell.side_bar_position;
+        let vertical = position.is_vertical();
         let button = |id: &'static str, glyph: &'static str, active: bool| {
             let color = if active { text } else { dim };
-            div()
-                .id(id)
-                .relative()
-                .w_full()
-                .h(px(ACTIVITY_BAR_WIDTH))
+            activity_slot(div().id(id).relative(), position, if active { active_color } else { bar.background })
                 .flex()
                 .items_center()
                 .justify_center()
-                .border_l_2()
-                .border_color(if active { active_color } else { bar.background })
                 .when(active, |b| b.bg(bar.active_background))
                 .text_color(if active { text } else { dim })
                 .hover(move |style| style.bg(hover))
@@ -412,19 +432,32 @@ impl EditorView {
         };
         div()
             .id("activity-bar")
-            .w(px(ACTIVITY_BAR_WIDTH))
             .flex_none()
-            .h_full()
+            .when(vertical, |bar| bar.w(px(ACTIVITY_BAR_WIDTH)).h_full().flex_col())
+            .when(!vertical, |bar| bar.h(px(ACTIVITY_BAR_WIDTH)).w_full().flex_row())
             .flex()
-            .flex_col()
             .justify_between()
             .bg(bar.background)
-            .border_r_1()
+            .map(|b| match position {
+                SideBarPosition::Left => b.border_r_1(),
+                SideBarPosition::Right => b.border_l_1(),
+                SideBarPosition::Top => b.border_b_1(),
+                SideBarPosition::Bottom => b.border_t_1(),
+            })
             .border_color(bar.border)
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event: &MouseDownEvent, _w, cx| {
+                    cx.stop_propagation();
+                    this.shell.context_menu = Some(ContextMenu { position: event.position, target: ContextTarget::ActivityBar });
+                    cx.notify();
+                }),
+            )
             .child(
                 div()
                     .flex()
-                    .flex_col()
+                    .when(vertical, |group| group.flex_col())
+                    .when(!vertical, |group| group.flex_row())
                     .child(
                         button(
                             "activity-explorer",
@@ -489,7 +522,8 @@ impl EditorView {
             .child(
                 div()
                     .flex()
-                    .flex_col()
+                    .when(vertical, |group| group.flex_col())
+                    .when(!vertical, |group| group.flex_row())
                     .child(
                         button("activity-panel", "panel", self.shell.panel_visible).cursor_pointer().on_mouse_down(
                             MouseButton::Left,
@@ -509,8 +543,13 @@ impl EditorView {
                                     } else {
                                         // Opens upwards from the button, to the right of the bar.
                                         let height = crate::sidebar::context_menu_height(&ContextTarget::Manage);
-                                        let position = gpui::point(px(ACTIVITY_BAR_WIDTH), event.position.y - px(height) + px(ACTIVITY_BAR_WIDTH * 0.5));
-                                        this.shell.context_menu = Some(ContextMenu { position, target: ContextTarget::Manage });
+                                        let at = match this.shell.side_bar_position {
+                                            SideBarPosition::Left => gpui::point(px(ACTIVITY_BAR_WIDTH), event.position.y - px(height) + px(ACTIVITY_BAR_WIDTH * 0.5)),
+                                            SideBarPosition::Right => gpui::point(event.position.x - px(crate::sidebar::CONTEXT_MENU_WIDTH + ACTIVITY_BAR_WIDTH), event.position.y - px(height) + px(ACTIVITY_BAR_WIDTH * 0.5)),
+                                            SideBarPosition::Top => gpui::point(event.position.x - px(crate::sidebar::CONTEXT_MENU_WIDTH), event.position.y + px(ACTIVITY_BAR_WIDTH * 0.5)),
+                                            SideBarPosition::Bottom => gpui::point(event.position.x - px(crate::sidebar::CONTEXT_MENU_WIDTH), event.position.y - px(height + ACTIVITY_BAR_WIDTH * 0.5)),
+                                        };
+                                        this.shell.context_menu = Some(ContextMenu { position: at, target: ContextTarget::Manage });
                                     }
                                     cx.notify();
                                 }),

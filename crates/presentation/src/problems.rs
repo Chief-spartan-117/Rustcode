@@ -121,13 +121,78 @@ impl EditorView {
     pub fn warn_if_untrusted(&mut self, cx: &mut Context<Self>) {
         let list = dirs::home_dir().and_then(|home| std::fs::read_to_string(home.join(".rustcode").join("trusted-folders")).ok()).unwrap_or_default();
         let untrusted = self.shell.explorers.iter().any(|tree| !rustcode_application::workspace_trust::is_trusted(&list, tree.root()));
-        if untrusted {
-            self.notify_user(
-                ToastLevel::Warning,
-                "This folder is not trusted, so language servers, extensions, cargo check and the folder's own tools are off. Run \"Workspace: Trust This Folder\" if you trust its authors.".to_owned(),
-                cx,
-            );
+        self.shell.trust_banner = untrusted;
+        cx.notify();
+    }
+
+    /// The bar under the title bar for a folder that is not trusted: what is off, and the way to turn it on.
+    pub(crate) fn render_trust_banner(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        if !self.shell.trust_banner {
+            return None;
         }
+        let theme = &self.theme;
+        let colors = &theme.notifications;
+        let hover = theme.lists.hover;
+        Some(
+            div()
+                .id("trust-banner")
+                .w_full()
+                .flex_none()
+                .min_h(px(36.))
+                .px(px(12.))
+                .py(px(4.))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(10.))
+                .bg(colors.background)
+                .border_b_1()
+                .border_color(colors.border)
+                .text_color(colors.foreground)
+                .text_size(px(13.))
+                .child(crate::icons::icon("warning", 16., colors.warning_icon))
+                .child(div().flex_1().min_w_0().child(
+                    "Restricted mode: this folder is not trusted, so language servers, extensions, cargo check and the folder's own tools are off. Trust it only if you trust its authors.",
+                ))
+                .child(
+                    div()
+                        .id("trust-banner-trust")
+                        .flex_none()
+                        .px(px(12.))
+                        .py(px(4.))
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .bg(theme.badge.activity_background)
+                        .text_color(theme.badge.activity_foreground)
+                        .hover(|style| style.opacity(0.85))
+                        .child("Trust This Folder")
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                                cx.stop_propagation();
+                                this.trust_folders(cx);
+                            }),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("trust-banner-close")
+                        .flex_none()
+                        .p(px(4.))
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(hover))
+                        .child(crate::icons::icon("close", 12., colors.foreground))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                                cx.stop_propagation();
+                                this.shell.trust_banner = false;
+                                cx.notify();
+                            }),
+                        ),
+                ),
+        )
     }
 
     /// Let the open folders run their own code: `cargo check`, rust-analyzer and the tools in a
@@ -144,6 +209,7 @@ impl EditorView {
         let saved = file.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&file, list));
         match saved {
             Ok(()) => {
+                self.shell.trust_banner = false;
                 self.notify_user(ToastLevel::Info, "The open folders are trusted: their tools may run.".to_owned(), cx);
                 self.run_diagnostics(cx);
             }
