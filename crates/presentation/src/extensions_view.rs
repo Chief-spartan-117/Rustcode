@@ -134,7 +134,7 @@ impl EditorView {
     pub(crate) fn render_extensions_panel(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = &self.theme;
         let (hover, text, dim) = (theme.lists.hover, theme.side_bar.foreground, theme.gutter_text);
-        let input_width = self.shell.sidebar_width - 24.0;
+        let input_width = self.side_panel_width(window) - 24.0;
 
         // One row of the list: a picture, a name and a line about it, who made it, and a button.
         let row = |id: (&'static str, usize),

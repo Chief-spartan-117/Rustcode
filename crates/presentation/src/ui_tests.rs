@@ -1255,6 +1255,50 @@ fn opening_an_untrusted_folder_shows_the_trust_banner(cx: &mut TestAppContext) {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// The view with a user settings file that holds `settings`, loaded.
+fn with_settings(view: &Entity<EditorView>, cx: &mut VisualTestContext, fs: &Arc<TestFs>, settings: &str) {
+    view.update(cx, |v, _| v.config.files = crate::ConfigFiles { settings: vec![PathBuf::from(USER_SETTINGS)], keybindings: Vec::new() });
+    write_file(fs, USER_SETTINGS, settings);
+    view.update(cx, |v, cx| v.reload_user_config(cx));
+}
+
+fn restore_with_theme(view: &Entity<EditorView>, cx: &mut VisualTestContext, theme: &str) -> String {
+    let mut saved = view.read_with(cx, |v, _| v.session_snapshot());
+    saved.theme = Some(theme.to_owned());
+    view.update(cx, |v, cx| v.restore_session(saved, cx));
+    view.read_with(cx, |v, _| v.themes[v.theme_index].name.clone())
+}
+
+#[gpui::test]
+fn a_theme_in_the_settings_wins_over_the_one_saved_with_a_folder(cx: &mut TestAppContext) {
+    let (view, cx, fs) = open_with_fs(cx, "doc", project());
+    with_settings(&view, cx, &fs, r#"{"workbench.colorTheme": "Dark+"}"#);
+    assert_eq!(restore_with_theme(&view, cx, "Light+"), "Dark+");
+}
+
+#[gpui::test]
+fn the_theme_saved_with_a_folder_is_used_when_the_settings_name_none(cx: &mut TestAppContext) {
+    let (view, cx, fs) = open_with_fs(cx, "doc", project());
+    with_settings(&view, cx, &fs, "{}");
+    assert_eq!(restore_with_theme(&view, cx, "Light+"), "Light+");
+}
+
+#[gpui::test]
+fn moving_the_side_bar_is_kept_in_the_settings_and_left_is_the_default(cx: &mut TestAppContext) {
+    use crate::shell::SideBarPosition::{Bottom, Left, Right, Top};
+    let (view, cx, fs) = open_with_fs(cx, "doc", project());
+    with_settings(&view, cx, &fs, "{}");
+    for (position, name) in [(Right, "right"), (Top, "top"), (Bottom, "bottom")] {
+        view.update(cx, |v, cx| v.move_sidebar(position, cx));
+        assert_eq!(view.read_with(cx, |v, _| v.shell.side_bar_position), position);
+        let saved = fs.read_to_string(Path::new(USER_SETTINGS)).unwrap();
+        assert!(saved.contains(&format!("\"workbench.sideBar.location\": \"{name}\"")), "{saved}");
+    }
+    view.update(cx, |v, cx| v.move_sidebar(Left, cx));
+    assert_eq!(view.read_with(cx, |v, _| v.shell.side_bar_position), Left);
+    assert!(!fs.read_to_string(Path::new(USER_SETTINGS)).unwrap().contains("sideBar"));
+}
+
 #[gpui::test]
 fn about_action_reports_the_version(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, "");

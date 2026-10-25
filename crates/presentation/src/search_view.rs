@@ -512,7 +512,7 @@ impl EditorView {
         let theme = &self.theme;
         let (hover, text, dim, highlight) = (theme.lists.hover, theme.side_bar.foreground, theme.gutter_text, theme.find_match);
         let options = self.search.options;
-        let input_width = self.shell.sidebar_width - 24.0;
+        let input_width = self.side_panel_width(window) - 24.0;
 
         let status = if self.search.running {
             "Searching...".to_owned()

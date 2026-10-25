@@ -181,4 +181,19 @@ mod tests {
         let text = read_until(&session, Duration::from_secs(10), |t| t.contains("login-42"));
         assert!(text.contains("login-42"), "{text:?}");
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_nobody_reads_waits_in_the_shell_instead_of_piling_up() {
+        let dir = std::env::temp_dir();
+        let mut session = PtyShell.spawn(&dir, 80, 24).unwrap();
+        // 20 MB would be well over a thousand chunks if every one were kept.
+        session.control.write(b"head -c 20000000 /dev/zero | tr '\\0' x; echo done-$((6*7))\n");
+        std::thread::sleep(Duration::from_secs(2));
+        let mut chunks = 0;
+        while chunks < 500 && session.events.try_recv().is_ok() {
+            chunks += 1;
+        }
+        assert!(chunks < 500, "{chunks} chunks were waiting");
+    }
 }
