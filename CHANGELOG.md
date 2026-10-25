@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0](https://github.com/Chief-spartan-117/Rustcode/compare/v0.3.1...v0.4.0) (2026-10-25)
+
+
+### Features
+
+* add a maximize button that lets the bottom panel fill the editor area ([61c4ee2](https://github.com/Chief-spartan-117/Rustcode/commit/61c4ee2c2ae0867828878e3ece0c3ff462f8c178))
+
+
+### Bug Fixes
+
+* accumulate small trackpad deltas so the terminal scrolls ([d0a4291](https://github.com/Chief-spartan-117/Rustcode/commit/d0a429128e9fc250046e6acb58cd72f55e47494d))
+* restore the last folder, show every icon, move the side bar and trust from a banner ([c7962a6](https://github.com/Chief-spartan-117/Rustcode/commit/c7962a68aa0a1bf3829d39ad36c448fbfb968e1c))
+* update rustls-webpki to fix RUSTSEC-2026-0382 ([5cf4b12](https://github.com/Chief-spartan-117/Rustcode/commit/5cf4b1210b6832f98aa8dcbf2ad6fdffd1cae76e))
+
+
+### Performance Improvements
+
+* keep terminal floods and the kernel and device pickers light on memory ([c638460](https://github.com/Chief-spartan-117/Rustcode/commit/c638460f6587c24583919fa9888c5b7a689e72e8))
+
 ## [0.3.1](https://github.com/Chief-spartan-117/Rustcode/compare/v0.3.0...v0.3.1) (2026-10-19)
 
 
