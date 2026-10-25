@@ -22,6 +22,9 @@ pub(crate) struct FlutterState {
     pub session: Option<usize>,
     /// Devices are being listed.
     pub listing: bool,
+    /// What `flutter emulators` printed and when: the list rarely changes, and each run starts a
+    /// whole Dart tool, so it is reused for a while.
+    emulators_seen: Option<(std::time::Instant, String)>,
     /// The app was started under the debugger, so hot reload goes through it.
     pub debugging: bool,
     /// Addresses `flutter run` printed: the DevTools of the app, and its Dart VM service.
@@ -414,15 +417,22 @@ impl EditorView {
         self.set_status("listing devices...");
         cx.notify();
         let package = self.dart_package();
+        let known_emulators = self.flutter.emulators_seen.as_ref().filter(|(at, _)| at.elapsed() < EMULATORS_KEPT).map(|(_, text)| text.clone());
         let task = cx.background_executor().spawn(async move {
             let devices = run_login_shell("flutter devices --machine");
-            let emulators = run_login_shell("flutter emulators").unwrap_or_default();
-            (devices, emulators)
+            let (emulators, fresh) = match known_emulators {
+                Some(text) => (text, false),
+                None => (run_login_shell("flutter emulators").unwrap_or_default(), true),
+            };
+            (devices, emulators, fresh)
         });
         cx.spawn(async move |this, cx| {
-            let (devices, emulators) = task.await;
+            let (devices, emulators, fresh) = task.await;
             this.update(cx, |this, cx| {
                 this.flutter.listing = false;
+                if fresh && !emulators.is_empty() {
+                    this.flutter.emulators_seen = Some((std::time::Instant::now(), emulators.clone()));
+                }
                 match devices {
                     Err(why) => this.set_status(why),
                     Ok(text) => {
@@ -595,13 +605,32 @@ impl EditorView {
 
 /// Run `command` in the user's login shell, which knows the `PATH` a terminal has (a desktop
 /// program often starts with a short one). The standard output, or why it failed.
+/// How long the list of emulators is reused.
+const EMULATORS_KEPT: std::time::Duration = std::time::Duration::from_secs(300);
+/// A tool that has not answered by now is stopped, so it does not sit in memory for good.
+const LOGIN_SHELL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
 fn run_login_shell(command: &str) -> Result<String, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-    let output = std::process::Command::new(shell)
+    let child = std::process::Command::new(shell)
         .args(["-lic", command])
         .stdin(std::process::Stdio::null())
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("cannot run {command}: {e}"))?;
+    let pid = child.id();
+    let (done, answer) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(child.wait_with_output());
+    });
+    let output = match answer.recv_timeout(LOGIN_SHELL_TIMEOUT) {
+        Ok(result) => result.map_err(|e| format!("cannot run {command}: {e}"))?,
+        Err(_) => {
+            let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
+            return Err(format!("{command} did not answer in {} seconds", LOGIN_SHELL_TIMEOUT.as_secs()));
+        }
+    };
     if output.stdout.is_empty() && !output.status.success() {
         return Err(format!("{command} failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
     }

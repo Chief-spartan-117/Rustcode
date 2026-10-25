@@ -7,6 +7,9 @@ use std::sync::mpsc;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use rustcode_application::{PtyControl, PtyEvent, PtySession, PtySpawner};
 
+/// Chunks of shell output (up to 16 KiB each) that may wait to be read.
+const OUTPUT_QUEUE: usize = 64;
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PtyShell;
 
@@ -81,7 +84,9 @@ impl PtySpawner for PtyShell {
 
         let mut reader = pair.master.try_clone_reader().map_err(|err| err.to_string())?;
         let writer = pair.master.take_writer().map_err(|err| err.to_string())?;
-        let (sender, events) = mpsc::channel();
+        // Bounded: a shell that prints faster than the window reads waits (as in any terminal) instead
+        // of piling its output up in memory.
+        let (sender, events) = mpsc::sync_channel(OUTPUT_QUEUE);
         std::thread::spawn(move || {
             let mut buffer = vec![0u8; 16 * 1024];
             loop {

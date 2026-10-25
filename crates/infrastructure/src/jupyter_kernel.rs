@@ -78,35 +78,27 @@ pub struct NotebookKernels;
 /// Kernel ids that name an interpreter instead of a Jupyter kernel.
 const PYTHON_PREFIX: &str = "python:";
 
+/// How long the list of kernels of a folder is reused: listing starts several interpreters, one
+/// of them with all of Jupyter loaded.
+const KERNELS_KEPT: std::time::Duration = std::time::Duration::from_secs(30);
+
+type KernelCache = std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (std::time::Instant, Vec<KernelOption>)>>>;
+static KERNEL_LISTS: KernelCache = std::sync::Mutex::new(None);
+
 impl KernelLauncher for NotebookKernels {
     fn available(&self, folder: &Path) -> Vec<KernelOption> {
-        let mut options: Vec<KernelOption> = python_environments(folder)
-            .into_iter()
-            .map(|python| {
-                let version = python_version(&python).unwrap_or_else(|| "Python".to_owned());
-                // A folder's own environment is named by its folder (`.venv`); others by where they are.
-                let home = python.ancestors().nth(2).filter(|home| home.starts_with(folder));
-                let place = home.and_then(|h| h.file_name()).map_or_else(|| python.display().to_string(), |n| n.to_string_lossy().into_owned());
-                KernelOption {
-                    id: format!("{PYTHON_PREFIX}{}", python.display()),
-                    label: format!("{version} ({place})"),
-                    detail: python.display().to_string(),
-                    language: "python".to_owned(),
+        if let Ok(lists) = KERNEL_LISTS.lock() {
+            if let Some((at, options)) = lists.as_ref().and_then(|m| m.get(folder)) {
+                if at.elapsed() < KERNELS_KEPT {
+                    return options.clone();
                 }
-            })
-            .collect();
-        // Jupyter's own kernels (other languages, and environments registered with ipykernel).
-        if let Some(python) = python_with_jupyter(folder) {
-            if let Ok(kernels) = installed_kernels(&python) {
-                let mut kernels = kernels;
-                kernels.sort();
-                options.extend(kernels.into_iter().map(|(name, language)| KernelOption {
-                    id: name.clone(),
-                    label: format!("Jupyter kernel: {name}"),
-                    detail: language.clone(),
-                    language: language.to_ascii_lowercase(),
-                }));
             }
+        }
+        let options = list_kernels(folder);
+        if let Ok(mut lists) = KERNEL_LISTS.lock() {
+            let map = lists.get_or_insert_with(Default::default);
+            map.retain(|_, (at, _)| at.elapsed() < KERNELS_KEPT);
+            map.insert(folder.to_path_buf(), (std::time::Instant::now(), options.clone()));
         }
         options
     }
@@ -126,6 +118,56 @@ impl KernelLauncher for NotebookKernels {
             JupyterKernels.start_named(language, kernelspec, folder)
         }
     }
+}
+
+/// The interpreters a notebook can run on, then the kernels Jupyter knows.
+fn list_kernels(folder: &Path) -> Vec<KernelOption> {
+    let mut options: Vec<KernelOption> = python_environments(folder)
+        .into_iter()
+        .map(|python| {
+            let version = python_version(&python).unwrap_or_else(|| "Python".to_owned());
+            // A folder's own environment is named by its folder (`.venv`); others by where they are.
+            let home = python.ancestors().nth(2).filter(|home| home.starts_with(folder));
+            let place = home.and_then(|h| h.file_name()).map_or_else(|| python.display().to_string(), |n| n.to_string_lossy().into_owned());
+            KernelOption {
+                id: format!("{PYTHON_PREFIX}{}", python.display()),
+                label: format!("{version} ({place})"),
+                detail: python.display().to_string(),
+                language: "python".to_owned(),
+            }
+        })
+        .collect();
+    // Jupyter's own kernels (other languages, and environments registered with ipykernel). One
+    // interpreter that has Jupyter answers; asking it directly saves a start of each one before it.
+    if let Some(mut kernels) = jupyter_kernels_of(folder) {
+        kernels.sort();
+        options.extend(kernels.into_iter().map(|(name, language)| KernelOption {
+            id: name.clone(),
+            label: format!("Jupyter kernel: {name}"),
+            detail: language.clone(),
+            language: language.to_ascii_lowercase(),
+        }));
+    }
+    options
+}
+
+/// The kernels of the first interpreter that has `jupyter_client`.
+fn jupyter_kernels_of(folder: &Path) -> Option<Vec<(String, String)>> {
+    let mut candidates: Vec<PathBuf> = python_for(folder).into_iter().collect();
+    let names: &[&str] = if cfg!(windows) { &["python", "python3"] } else { &["python3", "python"] };
+    candidates.extend(names.iter().filter_map(|name| crate::programs::find_program(name)));
+    let mut tried: Vec<PathBuf> = Vec::new();
+    for python in candidates {
+        let real = std::fs::canonicalize(&python).unwrap_or_else(|_| python.clone());
+        if tried.contains(&real) {
+            continue;
+        }
+        tried.push(real);
+        if let Ok(kernels) = installed_kernels(&python) {
+            return Some(kernels);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -236,5 +278,17 @@ mod tests {
             Ok(_) => panic!("there is no klingon kernel"),
         };
         assert!(message.contains("klingon"), "{message}");
+    }
+
+    #[test]
+    fn the_kernel_list_of_a_folder_is_reused_instead_of_starting_interpreters_again() {
+        let folder = std::env::temp_dir().join(format!("rustcode-kernels-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let first = NotebookKernels.available(&folder);
+        let start = Instant::now();
+        let second = NotebookKernels.available(&folder);
+        assert_eq!(first.iter().map(|k| &k.id).collect::<Vec<_>>(), second.iter().map(|k| &k.id).collect::<Vec<_>>());
+        assert!(start.elapsed() < Duration::from_millis(50), "the second listing started interpreters: {:?}", start.elapsed());
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 }

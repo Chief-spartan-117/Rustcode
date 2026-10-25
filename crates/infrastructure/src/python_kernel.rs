@@ -51,6 +51,25 @@ pub(crate) fn python_environments(folder: &Path) -> Vec<PathBuf> {
 
 /// `Python 3.12.1` for an interpreter, when it answers.
 pub(crate) fn python_version(python: &Path) -> Option<String> {
+    // Asking starts the interpreter; an interpreter that has not changed answers the same.
+    static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (std::time::SystemTime, Option<String>)>>> = std::sync::Mutex::new(None);
+    let stamp = std::fs::metadata(python).and_then(|m| m.modified()).ok();
+    if let Some(stamp) = stamp {
+        let seen = SEEN.lock().ok()?;
+        if let Some((at, version)) = seen.as_ref().and_then(|m| m.get(python)) {
+            if *at == stamp {
+                return version.clone();
+            }
+        }
+    }
+    let version = ask_python_version(python);
+    if let (Some(stamp), Ok(mut seen)) = (stamp, SEEN.lock()) {
+        seen.get_or_insert_with(Default::default).insert(python.to_path_buf(), (stamp, version.clone()));
+    }
+    version
+}
+
+fn ask_python_version(python: &Path) -> Option<String> {
     let out = Command::new(python).arg("--version").env("PATH", crate::programs::search_path()).output().ok()?;
     let text = String::from_utf8_lossy(if out.stdout.is_empty() { &out.stderr } else { &out.stdout }).trim().to_owned();
     (out.status.success() && !text.is_empty()).then_some(text)

@@ -22,6 +22,8 @@ use crate::text_layout::{LineLayout, line_height};
 const TERMINAL_PADDING: f32 = 8.0;
 /// How often shell output is picked up.
 const POLL: Duration = Duration::from_millis(16);
+/// Most shell output taken in at one look.
+const PUMP_BYTES_PER_TICK: usize = 512 * 1024;
 const DEFAULT_COLUMNS: usize = 80;
 const DEFAULT_ROWS: usize = 12;
 
@@ -454,10 +456,16 @@ impl EditorView {
     /// Take what the shells printed since the last look.
     pub(crate) fn pump_terminal(&mut self, cx: &mut Context<Self>) {
         let mut changed = false;
+        // A flood of output is taken in parts, so the window keeps answering between them.
+        let mut budget = PUMP_BYTES_PER_TICK;
         for session in &mut self.terminal.sessions {
             loop {
+                if budget == 0 {
+                    break;
+                }
                 match session.events.try_recv() {
                     Ok(PtyEvent::Output(bytes)) => {
+                        budget = budget.saturating_sub(bytes.len());
                         self.ext_ui.task_ends.extend(crate::ext_workbench::task_end_markers(&mut session.marker_tail, &bytes));
                         if let Some(capture) = session.capture.as_mut().filter(|c| c.len() < 4_000_000) {
                             capture.extend_from_slice(&bytes);
