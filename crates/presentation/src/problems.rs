@@ -10,6 +10,9 @@ use crate::editor_view::EditorView;
 use crate::notifications::ToastLevel;
 use crate::shell::{PanelTab, ROW_HEIGHT};
 
+/// Height of the trust banner, which the side bar's drag math must count when the side bar is at the top.
+pub(crate) const TRUST_BANNER_HEIGHT: f32 = 36.0;
+
 pub(crate) struct ProblemsState {
     /// What the list shows: language server problems, plus compiler problems for files no
     /// language server reported on.
@@ -138,9 +141,8 @@ impl EditorView {
                 .id("trust-banner")
                 .w_full()
                 .flex_none()
-                .min_h(px(36.))
+                .h(px(TRUST_BANNER_HEIGHT))
                 .px(px(12.))
-                .py(px(4.))
                 .flex()
                 .flex_row()
                 .items_center()
@@ -151,7 +153,7 @@ impl EditorView {
                 .text_color(colors.foreground)
                 .text_size(px(13.))
                 .child(crate::icons::icon("warning", 16., colors.warning_icon))
-                .child(div().flex_1().min_w_0().child(
+                .child(div().flex_1().min_w_0().truncate().child(
                     "Restricted mode: this folder is not trusted, so language servers, extensions, cargo check and the folder's own tools are off. Trust it only if you trust its authors.",
                 ))
                 .child(
@@ -210,7 +212,16 @@ impl EditorView {
         match saved {
             Ok(()) => {
                 self.shell.trust_banner = false;
-                self.notify_user(ToastLevel::Info, "The open folders are trusted: their tools may run.".to_owned(), cx);
+                // Language servers that were refused start now; the extension host starts when an
+                // extension is first used.
+                self.lsp.retry_failed();
+                self.lsp_versions.clear();
+                self.sync_language_servers(cx);
+                self.notify_user(
+                    ToastLevel::Info,
+                    "The open folders are trusted. Language servers are starting; extensions start the next time you run one of their commands.".to_owned(),
+                    cx,
+                );
                 self.run_diagnostics(cx);
             }
             Err(error) => self.notify_user(ToastLevel::Error, format!("cannot save {}: {error}", file.display()), cx),

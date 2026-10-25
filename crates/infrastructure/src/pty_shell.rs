@@ -76,6 +76,12 @@ impl PtySpawner for PtyShell {
                 command.env(key, value);
             }
         }
+        // A login shell reads ~/.zprofile, where Homebrew puts its folder on the PATH. An app started
+        // from the Dock has none of it, so without this `flutter` and `direnv` are "not found".
+        let shell_name = Path::new(&program).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if cfg!(target_os = "macos") && spec.args.is_empty() && matches!(shell_name.as_str(), "zsh" | "fish") {
+            command.arg("-l");
+        }
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         let child = pair.slave.spawn_command(command).map_err(|err| err.to_string())?;
@@ -161,5 +167,33 @@ mod tests {
         session.control.write(b"stty size\n");
         let text = read_until(&session, Duration::from_secs(10), |t| t.contains("30 100"));
         assert!(text.contains("30 100"), "{text:?}");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn zsh_starts_as_a_login_shell_so_its_profile_sets_the_path() {
+        if !shell_program().ends_with("zsh") {
+            return;
+        }
+        let dir = std::env::temp_dir();
+        let mut session = PtyShell.spawn(&dir, 80, 24).unwrap();
+        session.control.write(b"[[ -o login ]] && echo login-$((6*7))\n");
+        let text = read_until(&session, Duration::from_secs(10), |t| t.contains("login-42"));
+        assert!(text.contains("login-42"), "{text:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_nobody_reads_waits_in_the_shell_instead_of_piling_up() {
+        let dir = std::env::temp_dir();
+        let mut session = PtyShell.spawn(&dir, 80, 24).unwrap();
+        // 20 MB would be well over a thousand chunks if every one were kept.
+        session.control.write(b"head -c 20000000 /dev/zero | tr '\\0' x; echo done-$((6*7))\n");
+        std::thread::sleep(Duration::from_secs(2));
+        let mut chunks = 0;
+        while chunks < 500 && session.events.try_recv().is_ok() {
+            chunks += 1;
+        }
+        assert!(chunks < 500, "{chunks} chunks were waiting");
     }
 }

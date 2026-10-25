@@ -461,6 +461,8 @@ impl EditorView {
             GitPickAction::FlutterDevice(id, name) => self.flutter_select_device(id, name, cx),
             GitPickAction::FlutterLaunchEmulator(id) => self.flutter_launch_emulator(id, cx),
             GitPickAction::FlutterCreateEmulator => {
+                // The new emulator must show the next time the devices are listed.
+                self.flutter.emulators_seen = None;
                 self.new_terminal(cx);
                 self.terminal_text("flutter emulators --create", cx);
             }

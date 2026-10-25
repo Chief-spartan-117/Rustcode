@@ -829,6 +829,15 @@ impl EditorView {
         }
     }
 
+    /// How wide the side bar's content is: the bar's width, or the window's when it lies along the top or bottom.
+    pub(crate) fn side_panel_width(&self, window: &Window) -> f32 {
+        if self.shell.side_bar_position.is_vertical() {
+            self.shell.sidebar_width
+        } else {
+            window.viewport_size().width.into()
+        }
+    }
+
     /// Drag of the side bar's edge.
     pub(crate) fn drag_sidebar(&mut self, event: &MouseMoveEvent, window: &Window, cx: &mut Context<Self>) {
         use crate::shell::SideBarPosition as Position;
@@ -844,7 +853,8 @@ impl EditorView {
             Position::Left => self.shell.sidebar_width = (x - bar).clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
             Position::Right => self.shell.sidebar_width = (window_width - x - bar).clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
             Position::Top => {
-                let top = self.title_bar_height(window) + bar;
+                let banner = if self.shell.trust_banner { crate::problems::TRUST_BANNER_HEIGHT } else { 0.0 };
+                let top = self.title_bar_height(window) + banner + bar;
                 self.shell.sidebar_height = (y - top).clamp(crate::shell::MIN_SIDEBAR_HEIGHT, (window_height * 0.6).max(crate::shell::MIN_SIDEBAR_HEIGHT));
             }
             Position::Bottom => {
@@ -1303,6 +1313,7 @@ impl EditorView {
             self.shell.sync_watches();
             self.shell.sidebar_visible = true;
             self.log(format!("added {} to the workspace", path.display()));
+            self.warn_if_untrusted(cx);
         }
         cx.notify();
     }
@@ -1375,6 +1386,7 @@ impl EditorView {
             self.git_state = crate::git_view::GitState::new();
             self.refresh_git(cx);
             self.log(format!("opened folder {}", path.display()));
+            self.warn_if_untrusted(cx);
         }
         cx.notify();
     }

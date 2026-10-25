@@ -82,13 +82,15 @@ const PYTHON_PREFIX: &str = "python:";
 /// of them with all of Jupyter loaded.
 const KERNELS_KEPT: std::time::Duration = std::time::Duration::from_secs(30);
 
-type KernelCache = std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (std::time::Instant, Vec<KernelOption>)>>>;
+/// Keyed by the folder and whether it is trusted: a trusted folder's own environments count too.
+type KernelCache = std::sync::Mutex<Option<std::collections::HashMap<(PathBuf, bool), (std::time::Instant, Vec<KernelOption>)>>>;
 static KERNEL_LISTS: KernelCache = std::sync::Mutex::new(None);
 
 impl KernelLauncher for NotebookKernels {
     fn available(&self, folder: &Path) -> Vec<KernelOption> {
+        let key = (folder.to_path_buf(), crate::programs::folder_is_trusted(folder));
         if let Ok(lists) = KERNEL_LISTS.lock() {
-            if let Some((at, options)) = lists.as_ref().and_then(|m| m.get(folder)) {
+            if let Some((at, options)) = lists.as_ref().and_then(|m| m.get(&key)) {
                 if at.elapsed() < KERNELS_KEPT {
                     return options.clone();
                 }
@@ -98,7 +100,7 @@ impl KernelLauncher for NotebookKernels {
         if let Ok(mut lists) = KERNEL_LISTS.lock() {
             let map = lists.get_or_insert_with(Default::default);
             map.retain(|_, (at, _)| at.elapsed() < KERNELS_KEPT);
-            map.insert(folder.to_path_buf(), (std::time::Instant::now(), options.clone()));
+            map.insert(key, (std::time::Instant::now(), options.clone()));
         }
         options
     }

@@ -24,7 +24,7 @@ pub(crate) struct FlutterState {
     pub listing: bool,
     /// What `flutter emulators` printed and when: the list rarely changes, and each run starts a
     /// whole Dart tool, so it is reused for a while.
-    emulators_seen: Option<(std::time::Instant, String)>,
+    pub(crate) emulators_seen: Option<(std::time::Instant, String)>,
     /// The app was started under the debugger, so hot reload goes through it.
     pub debugging: bool,
     /// Addresses `flutter run` printed: the DevTools of the app, and its Dart VM service.
@@ -419,10 +419,10 @@ impl EditorView {
         let package = self.dart_package();
         let known_emulators = self.flutter.emulators_seen.as_ref().filter(|(at, _)| at.elapsed() < EMULATORS_KEPT).map(|(_, text)| text.clone());
         let task = cx.background_executor().spawn(async move {
-            let devices = run_login_shell("flutter devices --machine");
+            let devices = run_flutter(&["devices", "--machine", "--device-timeout", DEVICE_WAIT]);
             let (emulators, fresh) = match known_emulators {
                 Some(text) => (text, false),
-                None => (run_login_shell("flutter emulators").unwrap_or_default(), true),
+                None => (run_flutter(&["emulators"]).unwrap_or_default(), true),
             };
             (devices, emulators, fresh)
         });
@@ -479,7 +479,7 @@ impl EditorView {
         self.set_status(format!("starting emulator {id}..."));
         let task = cx.background_executor().spawn({
             let id = id.clone();
-            async move { run_login_shell(&format!("flutter emulators --launch {}", shell_quote(&id))) }
+            async move { run_flutter(&["emulators", "--launch", &id]) }
         });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -608,31 +608,62 @@ impl EditorView {
 /// How long the list of emulators is reused.
 const EMULATORS_KEPT: std::time::Duration = std::time::Duration::from_secs(300);
 /// A tool that has not answered by now is stopped, so it does not sit in memory for good.
-const LOGIN_SHELL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+const TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+/// Seconds `flutter devices` waits for devices to appear. Its own wait is 10 s, which makes every listing slow.
+const DEVICE_WAIT: &str = "3";
+
+/// The `flutter` program: on the PATH or where it is usually put. Looking is much cheaper than
+/// starting a login shell, which runs all of the user's start-up files first.
+fn flutter_program() -> Option<PathBuf> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let usual = ["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from).into_iter().chain(["flutter/bin", "development/flutter/bin", "fvm/default/bin"].map(|d| home.join(d)));
+    let on_path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
+    on_path.into_iter().chain(usual).map(|dir| dir.join("flutter")).find(|p| p.is_file())
+}
+
+/// Run `flutter` with `args`: directly when it can be found, else through the user's login shell.
+fn run_flutter(args: &[&str]) -> Result<String, String> {
+    match flutter_program() {
+        Some(program) => {
+            let mut command = std::process::Command::new(program);
+            command.args(args);
+            run_tool(command, &format!("flutter {}", args.join(" ")))
+        }
+        None => run_login_shell(&format!("flutter {}", args.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" "))),
+    }
+}
 
 fn run_login_shell(command: &str) -> Result<String, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-    let child = std::process::Command::new(shell)
-        .args(["-lic", command])
+    let mut run = std::process::Command::new(shell);
+    run.args(["-lic", command]);
+    run_tool(run, command)
+}
+
+fn run_tool(mut command: std::process::Command, label: &str) -> Result<String, String> {
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let child = command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("cannot run {command}: {e}"))?;
+        .map_err(|e| format!("cannot run {label}: {e}"))?;
     let pid = child.id();
     let (done, answer) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let _ = done.send(child.wait_with_output());
     });
-    let output = match answer.recv_timeout(LOGIN_SHELL_TIMEOUT) {
-        Ok(result) => result.map_err(|e| format!("cannot run {command}: {e}"))?,
+    let output = match answer.recv_timeout(TOOL_TIMEOUT) {
+        Ok(result) => result.map_err(|e| format!("cannot run {label}: {e}"))?,
         Err(_) => {
-            let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
-            return Err(format!("{command} did not answer in {} seconds", LOGIN_SHELL_TIMEOUT.as_secs()));
+            // The tool and everything it started: it leads its own process group.
+            let _ = std::process::Command::new("kill").args(["-9", &format!("-{pid}")]).status();
+            return Err(format!("{label} did not answer in {} seconds", TOOL_TIMEOUT.as_secs()));
         }
     };
     if output.stdout.is_empty() && !output.status.success() {
-        return Err(format!("{command} failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
+        return Err(format!("{label} failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
