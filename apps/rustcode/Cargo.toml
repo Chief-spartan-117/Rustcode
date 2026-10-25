@@ -13,4 +13,4 @@ dirs.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Sets the dock icon while running from a plain binary (a bundle gets it from its icns).
-cocoa = "0.26"
+cocoa = "0.27"
