@@ -1,12 +1,14 @@
 name: Release
 
-# On every push to main, release-please reads the commits since the last release:
-#   fix:                       patch release  (0.1.0 -> 0.1.1)
-#   feat:                      minor release  (0.1.0 -> 0.2.0)
+# On every push to main, scripts/release.py reads the commits since the last release:
+#   fix: / perf:               patch release  (0.4.0 -> 0.4.1)
+#   feat:                      minor release  (0.4.0 -> 0.5.0)
 #   feat!: / BREAKING CHANGE:  major release  (while below 1.0.0 this is a minor one)
-# It keeps a "release PR" open that holds the new version in Cargo.toml and the new CHANGELOG.md
-# entry. Merging that PR creates the tag and the GitHub release, and the jobs below build the
-# macOS app and attach it to the release. The program's updater finds that release by itself.
+#   anything else              no release
+# It writes the new version to Cargo.toml and Cargo.lock and the entry to CHANGELOG.md, commits that
+# straight to main, tags it and creates the GitHub release: no pull request. The jobs below then build
+# the apps and attach them to the release. The program's updater finds that release by itself.
+# The push to main needs the repository rules to let GitHub Actions bypass them (docs/RELEASING.md).
 on:
   push:
     branches: [main]
@@ -14,25 +16,35 @@ on:
 permissions:
   contents: read
 
+# Releases run one after the other, each on the main it was started from.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release-please:
+  version:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      release_created: ${{ steps.bump.outputs.release }}
+      tag_name: ${{ steps.bump.outputs.tag }}
     steps:
-      - id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - id: bump
+        run: python3 scripts/release.py
+      - name: Create the release
+        if: ${{ steps.bump.outputs.release == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ steps.bump.outputs.tag }}" --title "${{ steps.bump.outputs.tag }}" --notes-file release-notes.md
 
   build:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    needs: version
+    if: ${{ needs.version.outputs.release_created == 'true' }}
     strategy:
       matrix:
         os: [macos-14, macos-15-intel]
@@ -42,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.version.outputs.tag_name }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       # Signing and notarization run only when the repository has the secrets (see docs/RELEASING.md);
@@ -75,18 +87,18 @@ jobs:
       - name: Attach the files to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" target/dist/* --clobber
+        run: gh release upload "${{ needs.version.outputs.tag_name }}" target/dist/* --clobber
 
   build-windows:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    needs: version
+    if: ${{ needs.version.outputs.release_created == 'true' }}
     runs-on: windows-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.version.outputs.tag_name }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build
@@ -101,7 +113,7 @@ jobs:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          $version = "${{ needs.release-please.outputs.tag_name }}".TrimStart("v")
+          $version = "${{ needs.version.outputs.tag_name }}".TrimStart("v")
           function Sign($path) {
             if (-not $env:WINDOWS_CERTIFICATE) { return }
             $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
@@ -125,4 +137,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" target/dist/* --clobber
+        run: gh release upload "${{ needs.version.outputs.tag_name }}" target/dist/* --clobber
