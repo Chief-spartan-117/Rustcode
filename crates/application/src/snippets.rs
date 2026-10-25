@@ -200,7 +200,7 @@ impl Transform {
 
     /// The format for one match: `$1`, `${1}`, `${1:/upcase}`, `${1:+if set}`, `${1:-if not}`,
     /// `${1:?if set:if not}`, and plain text.
-    fn format_match(&self, captures: &fancy_regex::Captures) -> String {
+    fn format_match(&self, captures: &fancy_regex::Captures<'_, str>) -> String {
         let chars: Vec<char> = self.format.chars().collect();
         let group = |n: usize| captures.get(n).map(|m| m.as_str().to_owned()).filter(|t| !t.is_empty());
         let mut out = String::new();
